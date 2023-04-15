@@ -6,6 +6,7 @@
 #include <vector>
 #include <tuple>
 #include <numeric>
+#include <algorithm>
 #include <bits/stdc++.h>
 
 
@@ -120,6 +121,7 @@ class struct_library
   using tt_hash = kitty::hash<kitty::static_truth_table<NInputs>>;
   using lib_t = phmap::flat_hash_map<kitty::static_truth_table<NInputs>, supergates_list_t, tt_hash>;
   using lib_rule = phmap::flat_hash_map<kitty::dynamic_truth_table, std::vector<dsd_node>, kitty::hash<kitty::dynamic_truth_table>>;
+  using rule = std::vector<dsd_node>;
 
 public:
 
@@ -137,6 +139,43 @@ public:
       return "pi";
     if(t == node_type::none)
       return "none";
+  }
+
+  uint32_t get_depth(rule rule, dsd_node n)
+  {
+    if(n.type == node_type::pi_)
+    {
+      return 0;
+    }
+    uint32_t max_depth;
+    uint32_t left_depth = get_depth(rule, rule[n.fanin[0].index]);
+    uint32_t right_depth = get_depth(rule, rule[n.fanin[1].index]);
+    max_depth = (left_depth > right_depth) ? left_depth : right_depth;
+    return max_depth + 1;
+  }
+
+  void print_dsd_node(dsd_node& n)
+  {
+    std::cout << n.index << " " << to_string(n.type) << " ";
+    for(auto elem : n.fanin)
+      std::cout << "{" << elem.index << ", " << elem.inv << "}";
+    std::cout <<"\n";
+  }
+
+  void print_rule(rule& r)
+  {
+    for(auto elem : r)
+      print_dsd_node(elem);
+  }
+
+  bool equal_subrule(rule r1, rule r2, dsd_node n1, dsd_node n2)
+  {
+    if(n1.type == node_type::pi_ && n2.type == node_type::pi_)
+      return true;
+    if(n1.type != n2.type || n1.fanin.size() != n2.fanin.size())
+      return false;
+    return (equal_subrule(r1, r2, r1[n1.fanin[0].index], r2[n2.fanin[0].index]) && equal_subrule(r1, r2, r1[n1.fanin[1].index], r2[n2.fanin[1].index]) && n1.fanin[0].inv == n2.fanin[0].inv && n1.fanin[1].inv == n2.fanin[1].inv)
+              || (equal_subrule(r1, r2, r1[n1.fanin[0].index], r2[n2.fanin[1].index]) && equal_subrule(r1, r2, r1[n1.fanin[1].index], r2[n2.fanin[0].index]) && n1.fanin[0].inv == n2.fanin[1].inv && n1.fanin[1].inv == n2.fanin[0].inv);
   }
 
   explicit struct_library( std::vector<gate> const& gates, tech_library_params const ps = {}, super_lib const& supergates_spec = {} )
@@ -181,7 +220,7 @@ public:
    * Returns a list of gates that match the function represented
    * by the truth table.
    */
-  std::vector<dsd_node> get_rules( kitty::dynamic_truth_table const& tt )
+  rule get_rules( kitty::dynamic_truth_table const& tt )
   {
     auto match = _rules_map.find( tt );
     if ( match != _rules_map.end() )
@@ -199,7 +238,7 @@ private:
   void generate_library()
   {
 
-    std::vector<std::vector<dsd_node>> rules = {};
+    std::vector<rule> rules = {};
     //std::vector<gate_struct> bttm_rules = {};
 
     auto supergates = _super.get_super_library();
@@ -216,7 +255,7 @@ private:
     {
       if(gate.num_vars > 1)
       {
-        std::vector<dsd_node> rule = {};
+        rule rule = {};
         std::vector<int> support = {};
         for(int i = 0; i < gate.num_vars;i++)
         {
@@ -225,9 +264,17 @@ private:
         }
         auto cpy = gate.function;
         compute_rule(cpy, support, rule);
+        std::vector<std::vector<dsd_node>> der_rules = {};
+        der_rules.push_back(rule);
+        std::vector<std::tuple<uint32_t, uint32_t>> depths = { { get_depth(rule, rule[rule[rule.size()-1].fanin[0].index]), get_depth(rule, rule[rule[rule.size()-1].fanin[1].index]) } };
+        create_rules_from_rule(der_rules, rule, rule[rule.size()-1], depths, true, true);
         _rules_map.insert({gate.function, rule});
-        rec_print_dsd(rule, rule[rule.size()-1]);
-        std::cout<<"\n";
+        /*for(auto elem : der_rules)
+        {
+          rec_print_dsd(elem, elem[elem.size()-1]);
+          std::cout << "\n";
+        }
+        std::cout<<"\n";*/
         rules.push_back(rule);
         //_rules_map.insert( {gate.function, rule} );
       }
@@ -236,7 +283,7 @@ private:
     
   }
 
-  void print_dsd_node(dsd_node n)
+  /*void print_dsd_node(dsd_node n)
   {
     std::cout << "Type " << to_string(n.type) << " index " << n.index << "\n";
     for(auto elem : n.fanin)
@@ -246,9 +293,9 @@ private:
       std::cout << elem.index << "\t";
     }
     std::cout << "\n";
-  }
+  }*/
 
-  void rec_print_dsd(std::vector<dsd_node> rule, dsd_node n)
+  void rec_print_dsd(rule rule, dsd_node n)
   {
     if(n.type == node_type::pi_)
     {
@@ -279,6 +326,137 @@ private:
     rec_print_dsd(rule, rule[n.fanin[1].index]);
     std::cout << ")";
     }
+  }
+
+  void swap(rule& rule, dsd_node* node_i, dsd_node* node_j)
+  {
+    auto i = node_i -> index;
+    auto j = node_j -> index;
+    node_i->index = j;
+    node_j->index = i; 
+    std::swap(rule[i], rule[j]);
+  }
+
+  void make_move(rule& rule, dsd_node* target, dsd_node* r, uint8_t left) //for left = 1 you do left move
+  {
+    auto targ_index = 0 + left;
+    auto r_index = 1 - targ_index;
+    auto temp_index = target->fanin[targ_index].index;
+    auto temp_inv = target->fanin[targ_index].inv;
+    //swap position internal to rule of the two elements
+    swap(rule, target, r);
+    auto temp = target;
+    target = r;
+    r = temp;
+
+    //adjust children
+    target->fanin[targ_index].index = r->index;
+    target->fanin[targ_index].inv = 0;
+    r->fanin[r_index].index = temp_index;
+    r->fanin[r_index].inv = temp_inv;
+  }
+
+  //not visited depths and not new depths = swapped old ones
+  bool check_depths(rule rule, dsd_node root, std::vector<std::tuple<uint32_t, uint32_t>> depth_branches, uint32_t left) //for left = 1 check if left move is possible
+  {
+    auto left_node = rule[root.fanin[0].index];
+    auto right_node = rule[root.fanin[1].index];
+    auto left_depth = get_depth(rule, left_node);
+    auto right_depth = get_depth(rule, right_node);
+    auto left_it1 = std::find(depth_branches.begin(), depth_branches.end(), (std::tuple<uint32_t, uint32_t>) {left_depth-1, right_depth+1});
+    auto left_it2 = std::find(depth_branches.begin(), depth_branches.end(), (std::tuple<uint32_t, uint32_t>) {right_depth+1, left_depth-1});
+    auto right_it1 = std::find(depth_branches.begin(), depth_branches.end(), (std::tuple<uint32_t, uint32_t>) {left_depth+1, right_depth-1});
+    auto right_it2 = std::find(depth_branches.begin(), depth_branches.end(), (std::tuple<uint32_t, uint32_t>) {right_depth-1, left_depth+1});
+    if(left)
+      return left_it1 == depth_branches.end() && left_it2 == depth_branches.end();
+    else
+      return right_it1 == depth_branches.end() && right_it2 == depth_branches.end();
+  }
+
+  void create_rules_from_rule(std::vector<rule>& new_rules, rule rule, dsd_node start_node, std::vector<std::tuple<uint32_t, uint32_t>>& depth_branches, bool can_left, bool can_right)
+  {
+    if(start_node.type == node_type::pi_) //if you cannot produce new rules or you are a PI return
+      return;
+     
+    std::vector<dsd_node> left_rule(rule);
+    std::vector<dsd_node> right_rule(rule);
+    std::vector<std::tuple<uint32_t, uint32_t>> next_depths = {}; 
+    auto left_node = &left_rule[start_node.fanin[0].index];
+    auto right_node = &right_rule[start_node.fanin[1].index];
+    bool new_left = false;
+    bool new_right = false;
+    
+    std::tuple<uint32_t, uint32_t> depths = { get_depth(rule, *left_node), get_depth(rule, *right_node) };
+    depth_branches.push_back(depths);
+
+    //left move
+    if(can_left && left_node->type == start_node.type && start_node.fanin[0].inv == 0 
+    && check_depths(rule, start_node, depth_branches, 1)
+    )
+    {
+      auto r = &left_rule[start_node.index];
+
+      make_move(left_rule, left_node, r, 1);
+      
+      //add to new rules
+      /*bool match = false;
+      for(auto elem : new_rules)
+      {
+        if(equal_subrule(left_rule, elem, left_rule[left_rule.size()-1], elem[elem.size()-1]))
+          match = true;
+      }
+      if(!match)
+      {*/
+      new_rules.push_back(left_rule);
+      new_left = true;
+      //}
+      depth_branches.push_back( { get_depth(left_rule, left_rule[left_rule[left_node->index].fanin[0].index]), get_depth(left_rule, left_rule[left_rule[left_node->index].fanin[1].index]) } );
+    }
+    //right move
+    if(can_right && right_node->type == start_node.type && start_node.fanin[1].inv == 0 
+    && check_depths(rule, start_node, depth_branches, 0)
+    )
+    {
+      auto r = &right_rule[start_node.index];
+      
+      make_move(right_rule, right_node, r, 0);
+
+      //add to new rules
+      /*bool match = false;
+      for(auto elem : new_rules)
+      {
+        if(equal_subrule(right_rule, elem, right_rule[right_rule.size()-1], elem[elem.size()-1]))
+          match = true;
+      }
+      if(!match)
+      {*/
+      new_rules.push_back(right_rule);
+      new_right = true;
+      //}
+      depth_branches.push_back( { get_depth(right_rule, right_rule[right_rule[right_node->index].fanin[0].index]), get_depth(right_rule, right_rule[right_rule[right_node->index].fanin[1].index]) } );
+    }
+    if(!new_left && !new_right)
+    {
+      return;
+    }       
+    //initial rule, start_node left children
+    create_rules_from_rule(new_rules, rule, rule[start_node.fanin[0].index], next_depths, true, true);
+    //initial rule, start_node right children
+    create_rules_from_rule(new_rules, rule, rule[start_node.fanin[1].index], next_depths, true, true);
+    //left rule, start_node new root
+    if(new_left)
+    {
+      create_rules_from_rule(new_rules, left_rule, left_rule[start_node.index], depth_branches, true, false);
+    }
+    //left rule, start_node new root
+    if(new_right)
+    {
+      create_rules_from_rule(new_rules, right_rule, right_rule[start_node.index], depth_branches, false, true);
+    }
+
+    //try to make left, right moves,
+    //re-call function on left and right children, passing the actual value of the depths of the root branches
+    ////re-call function on generated rules passing the new root as root (new root is the node that has been "pushed up")
   }
 
   int try_top_dec(kitty::dynamic_truth_table& tt, int num_vars)
