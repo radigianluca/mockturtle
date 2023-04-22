@@ -91,6 +91,7 @@ class struct_library
   enum class node_type
   {
   none,
+  zero_,
   pi_,
   and_,
   or_,
@@ -139,11 +140,13 @@ public:
       return "pi";
     if(t == node_type::none)
       return "none";
+    if(t == node_type::zero_)
+      return "zero";
   }
 
   uint32_t get_depth(rule rule, dsd_node n)
   {
-    if(n.type == node_type::pi_)
+    if(n.type == node_type::pi_ || n.type == node_type::zero_)
     {
       return 0;
     }
@@ -239,7 +242,6 @@ private:
   {
 
     std::vector<rule> rules = {};
-    //std::vector<gate_struct> bttm_rules = {};
 
     auto supergates = _super.get_super_library();
     uint32_t const standard_gate_size = _super.get_standard_library_size();
@@ -264,17 +266,25 @@ private:
         }
         auto cpy = gate.function;
         compute_rule(cpy, support, rule);
-        std::vector<std::vector<dsd_node>> der_rules = {};
-        der_rules.push_back(rule);
-        std::vector<std::tuple<uint32_t, uint32_t>> depths = { { get_depth(rule, rule[rule[rule.size()-1].fanin[0].index]), get_depth(rule, rule[rule[rule.size()-1].fanin[1].index]) } };
-        create_rules_from_rule(der_rules, rule, rule[rule.size()-1], depths, true, true);
         _rules_map.insert({gate.function, rule});
-        /*for(auto elem : der_rules)
+        std::cout << "Dsd:\n";
+        print_rule(rule, rule[rule.size()-1]);
+
+        //aig_conversion
+        auto aig_rule = map_to_aig(rule);
+        std::cout << "\nAig:\n";
+        print_rule(aig_rule, aig_rule[aig_rule.size()-1]);
+        std::vector<std::vector<dsd_node>> der_rules = {};
+        der_rules.push_back(aig_rule);
+        std::vector<std::tuple<uint32_t, uint32_t>> depths = { { get_depth(aig_rule, aig_rule[aig_rule[aig_rule.size()-1].fanin[0].index]), get_depth(aig_rule, aig_rule[aig_rule[aig_rule.size()-1].fanin[1].index]) } };
+        create_rules_from_rule(der_rules, aig_rule, aig_rule[aig_rule.size()-1], depths, true, true);
+        std::cout << "\nDerived:\n";
+        for(auto elem : der_rules)
         {
-          rec_print_dsd(elem, elem[elem.size()-1]);
+          print_rule(elem, elem[elem.size()-1]);
           std::cout << "\n";
         }
-        std::cout<<"\n";*/
+        std::cout<<"\n";
         rules.push_back(rule);
         //_rules_map.insert( {gate.function, rule} );
       }
@@ -283,23 +293,16 @@ private:
     
   }
 
-  /*void print_dsd_node(dsd_node n)
-  {
-    std::cout << "Type " << to_string(n.type) << " index " << n.index << "\n";
-    for(auto elem : n.fanin)
-    {
-      if(elem.inv)
-        std::cout << "!";
-      std::cout << elem.index << "\t";
-    }
-    std::cout << "\n";
-  }*/
-
-  void rec_print_dsd(rule rule, dsd_node n)
+  void print_rule(rule rule, dsd_node n)
   {
     if(n.type == node_type::pi_)
     {
       std::cout<< char('a' + n.index);
+      return;
+    }
+    if(n.type == node_type::zero_)
+    {
+      std::cout << "0";
       return;
     }
     else
@@ -313,7 +316,7 @@ private:
     {
       std::cout << "!" << char('a' + n.fanin[2].index) << " * ";
     }
-    rec_print_dsd(rule, rule[n.fanin[0].index]);
+    print_rule(rule, rule[n.fanin[0].index]);
     std::cout << " " << to_string(n.type) << " ";
     if(n.fanin[1].inv)
     {
@@ -323,7 +326,7 @@ private:
     {
       std::cout << char('a' + n.fanin[2].index) << " * ";
     }
-    rec_print_dsd(rule, rule[n.fanin[1].index]);
+    print_rule(rule, rule[n.fanin[1].index]);
     std::cout << ")";
     }
   }
@@ -375,7 +378,7 @@ private:
 
   void create_rules_from_rule(std::vector<rule>& new_rules, rule rule, dsd_node start_node, std::vector<std::tuple<uint32_t, uint32_t>>& depth_branches, bool can_left, bool can_right)
   {
-    if(start_node.type == node_type::pi_) //if you cannot produce new rules or you are a PI return
+    if(start_node.type == node_type::pi_ || start_node.type == node_type::zero_) //if you cannot produce new rules or you are a PI return
       return;
      
     std::vector<dsd_node> left_rule(rule);
@@ -398,7 +401,6 @@ private:
 
       make_move(left_rule, left_node, r, 1);
       
-      //add to new rules
       /*bool match = false;
       for(auto elem : new_rules)
       {
@@ -407,6 +409,7 @@ private:
       }
       if(!match)
       {*/
+      //add to new rules
       new_rules.push_back(left_rule);
       new_left = true;
       //}
@@ -421,7 +424,6 @@ private:
       
       make_move(right_rule, right_node, r, 0);
 
-      //add to new rules
       /*bool match = false;
       for(auto elem : new_rules)
       {
@@ -430,15 +432,16 @@ private:
       }
       if(!match)
       {*/
+      //add to new rules
       new_rules.push_back(right_rule);
       new_right = true;
       //}
       depth_branches.push_back( { get_depth(right_rule, right_rule[right_rule[right_node->index].fanin[0].index]), get_depth(right_rule, right_rule[right_rule[right_node->index].fanin[1].index]) } );
     }
-    if(!new_left && !new_right)
+    /*if(!new_left && !new_right)
     {
       return;
-    }       
+    }*/       
     //initial rule, start_node left children
     create_rules_from_rule(new_rules, rule, rule[start_node.fanin[0].index], next_depths, true, true);
     //initial rule, start_node right children
@@ -453,10 +456,77 @@ private:
     {
       create_rules_from_rule(new_rules, right_rule, right_rule[start_node.index], depth_branches, false, true);
     }
+  }
 
-    //try to make left, right moves,
-    //re-call function on left and right children, passing the actual value of the depths of the root branches
-    ////re-call function on generated rules passing the new root as root (new root is the node that has been "pushed up")
+  dsd_node* get_father(rule& rule, dsd_node& node)
+  {
+    for(uint32_t i = 0; i < rule.size(); i++)
+    {
+      if(rule[i].type != node_type::pi_ && rule[i].type != node_type::zero_ && (rule[i].fanin[0].index == node.index || rule[i].fanin[1].index == node.index))
+        return &rule[i];
+    }
+    return NULL;
+  }
+
+  dsd_node* find_node(rule& r, uint32_t i)
+  {
+    for(int j = 0; j < r.size(); j++)
+    {
+      if(r[j].index == i)
+        return &r[j];
+    }
+  return NULL;
+  }
+
+  rule map_to_aig(rule& r)
+  {
+    std::vector<dsd_node> rule(r);
+    std::vector<dsd_node> aig_rule;
+
+    std::transform(rule.begin(), rule.end(), rule.begin(), [](dsd_node n) -> dsd_node
+    {
+      for(auto& s : n.fanin)
+      {
+        s.index += 1;
+      }
+      return {n.type, n.index + 1, n.fanin};
+    });
+
+    rule.insert(rule.begin(), {node_type::zero_, 0, {}});
+
+    for (typename std::vector<dsd_node>::reverse_iterator i = rule.rbegin(); i != rule.rend(); ++i ) 
+    {
+      dsd_node n = *i; 
+      dsd_node new_node;
+
+      if(n.type == node_type::and_ || n.type == node_type::pi_ || n.type == node_type::zero_)
+        {
+          new_node = n;
+        }
+        else if(n.type == node_type::or_)
+        {
+          new_node = {node_type::and_, n.index, { {~n.fanin[0].inv, n.fanin[0].index}, {~n.fanin[1].inv, n.fanin[1].index} } };
+          if(get_father(rule, n) != NULL)
+          {
+            dsd_node* father = find_node(aig_rule, get_father(rule, n)->index);
+            if(father->fanin[0].index == n.index)
+            {
+              father->fanin[0].inv = ~father->fanin[0].inv;
+            }
+            else
+            {
+              father->fanin[1].inv = ~father->fanin[1].inv;
+            }
+          }
+          else //it is root
+          {
+            dsd_node new_root = {node_type::and_, rule.size() + 1, {{1, 0}, {1, n.index}}};
+            aig_rule.insert(aig_rule.begin(), new_root);
+          }
+        }
+        aig_rule.insert(aig_rule.begin(), new_node);
+    }      
+  return aig_rule;
   }
 
   int try_top_dec(kitty::dynamic_truth_table& tt, int num_vars)
@@ -547,7 +617,7 @@ private:
       std::vector<dsd_node> new_rule;
       auto found_rule = get_rules(tt);
       std::copy_if(found_rule.begin(), found_rule.end(), std::back_inserter(new_rule), [](dsd_node n) {
-        return n.type != node_type::pi_;
+        return (n.type != node_type::pi_);
       });
       for_each(found_rule.begin(), found_rule.end(), [&](dsd_node elem)
       {
@@ -556,7 +626,7 @@ private:
       });
       for_each(rule.begin(), rule.end(), [&](dsd_node elem)
       {
-          count_curr++;
+            count_curr++;
       });
       //update index of node
       std::transform(new_rule.begin(), new_rule.end(), new_rule.begin(), [&](dsd_node& n) -> dsd_node
