@@ -250,6 +250,19 @@ void cut<MaxLeaves, T>::set_leaves( Container const& c )
 }
 
 template<int MaxLeaves, typename T>
+template<typename Iterator>
+void cut<MaxLeaves, T>::add_leaves( Iterator begin, Iterator end )
+{
+  _cend = _end = std::copy( begin, end, _end );
+  _length = static_cast<uint32_t>( std::distance( _array.begin(), _end ) );
+
+  while ( begin != end )
+  {
+    _signature |= UINT64_C( 1 ) << ( *begin++ & 0x3f );
+  }
+}
+
+template<int MaxLeaves, typename T>
 bool cut<MaxLeaves, T>::dominates( cut const& that ) const
 {
   /* quick check for counter example */

@@ -112,7 +112,7 @@ struct supergate
   std::vector<uint8_t> permutation{};
 
   /* pin negations */
-  uint8_t polarity{ 0 };
+  uint16_t polarity{ 0 };
 };
 
 /*! \brief Library of gates for Boolean matching

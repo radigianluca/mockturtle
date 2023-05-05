@@ -259,6 +259,7 @@ private:
     {
       cut->func_id = 0;
     }
+    cut->pattern_index = 0;
   }
 
   void add_unit_cut( uint32_t index )
@@ -269,6 +270,13 @@ private:
     {
       cut->func_id = 2;
     }
+    cut->pattern_index = 1;
+  }
+
+  void add_new_cut( uint32_t index, uint32_t leaves_beg, uint32_t leaves_end, uint32_t pat_index )
+  {
+    auto& cut = _cuts[index].add_cut( &leaves_beg, &leaves_end );
+    cut->pattern_index = pat_index;
   }
 
 private:
