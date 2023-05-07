@@ -117,6 +117,10 @@ public:
   template<typename Iterator>
   void set_leaves( Iterator begin, Iterator end );
 
+  template<typename Iterator>
+  void add_leaves( Iterator begin, Iterator end );
+
+
   /*! \brief Sets leaves (using container).
    *
    * Convenience function, which extracts the begin and end iterators from the
@@ -179,6 +183,7 @@ public:
    * \return True, if resulting cut is small enough
    */
   bool merge( cut const& that, cut& res, uint32_t cut_size ) const;
+
 
 private:
   std::array<uint32_t, MaxLeaves> _leaves;
@@ -254,7 +259,7 @@ template<typename Iterator>
 void cut<MaxLeaves, T>::add_leaves( Iterator begin, Iterator end )
 {
   _cend = _end = std::copy( begin, end, _end );
-  _length = static_cast<uint32_t>( std::distance( _array.begin(), _end ) );
+  _length = static_cast<uint32_t>( std::distance( _leaves.begin(), _end ) );
 
   while ( begin != end )
   {

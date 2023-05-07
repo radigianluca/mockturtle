@@ -129,8 +129,19 @@ class struct_library
 
   struct label
   {
-    uint32_t index;
-    uint16_t inv;
+    union
+    {
+      struct
+      {
+        uint32_t inv : 1;
+        uint32_t index : 31;
+      };
+       uint32_t data;
+    };
+    bool operator==( label const& other ) const
+    {
+      return data == other.data;
+    }
   };
 
   struct signal_hash
@@ -151,13 +162,21 @@ class struct_library
       }
   };
 
+  struct label_hash
+  {
+      std::size_t operator()(label const& l) const noexcept
+      {
+          return std::hash<uint32_t>{}(l.data);
+      }
+  };
+
   using supergates_list_t = std::vector<supergate<NInputs>>;
   using tt_hash = kitty::hash<kitty::static_truth_table<NInputs>>;
   using lib_t = phmap::flat_hash_map<kitty::static_truth_table<NInputs>, supergates_list_t, tt_hash>;
   using lib_rule = phmap::flat_hash_map<kitty::dynamic_truth_table, std::vector<dsd_node>, kitty::hash<kitty::dynamic_truth_table>>;
   using rule = std::vector<dsd_node>;
   using lib_table = phmap::flat_hash_map<std::tuple<signal, signal>, uint32_t, tuple_s_hash>;
-  using map_label_gate = phmap::flat_hash_map<uint32_t, supergate<NInputs>>;
+  using map_label_gate = phmap::flat_hash_map<label, supergates_list_t, label_hash>;
 
 public:
 
@@ -267,29 +286,17 @@ public:
               || (equal_subrule(r1, r2, r1[n1.fanin[0].index], r2[n2.fanin[1].index]) && equal_subrule(r1, r2, r1[n1.fanin[1].index], r2[n2.fanin[0].index]) && n1.fanin[0].inv == n2.fanin[1].inv && n1.fanin[1].inv == n2.fanin[0].inv);
   }
 
-  explicit struct_library( std::vector<gate> const& gates, tech_library_params const ps = {}, super_lib const& supergates_spec = {} )
+  explicit struct_library( std::vector<gate> const& gates, super_lib const& supergates_spec = {}, uint8_t verbose = 0 )
       : _gates( gates ),
         _supergates_spec( supergates_spec ),
-        _ps( ps ),
         _super( _gates, _supergates_spec ),
         _use_supergates( false ),
         _super_lib(),
         _dsd_map()
   {
-    generate_library();
+    generate_library(verbose);
   }
 
-  explicit struct_library( std::vector<gate> const& gates, super_lib const& supergates_spec, tech_library_params const ps = {} )
-      : _gates( gates ),
-        _supergates_spec( supergates_spec ),
-        _ps( ps ),
-        _super( _gates, _supergates_spec, super_utils_params{ps.verbose} ),
-        _use_supergates( true ),
-        _super_lib(),
-        _dsd_map()
-  {
-    generate_library();
-  }
 
   /*! \brief Get the rules matching the function.
    *
@@ -338,8 +345,30 @@ public:
     return nullptr;
   }
 
+  //returns positive supergates given a pattern index
+  const supergates_list_t* get_pos_gates( uint32_t index ) const
+  {
+    auto match = _label_to_gate.find( {0,index} );
+    if ( match != _label_to_gate.end() )
+    {
+      return &( match -> second );
+    }
+    return nullptr;
+  }
+
+  //returns positive supergates given a pattern index
+  const supergates_list_t* get_neg_gates( uint32_t index ) const
+  {
+    auto match = _label_to_gate.find( {1,index} );
+    if ( match != _label_to_gate.end() )
+    {
+      return &( match -> second );
+    }
+    return nullptr;
+  }
+
 private:
-  void generate_library()
+  void generate_library(uint8_t verbose)
   {
     auto supergates = _super.get_super_library();
     uint32_t const standard_gate_size = _super.get_standard_library_size();
@@ -351,7 +380,7 @@ private:
       return gate1.area < gate2.area;
     });
 
-    for(auto& gate : supergates)
+    for(const auto& gate : supergates)
     {
       if(gate.num_vars > 1)
       {
@@ -366,34 +395,65 @@ private:
         auto cpy = gate.function;
         compute_dsd(cpy, support, rule);
         _dsd_map.insert({gate.function, rule});
-        std::cout << "Dsd:\n";
-        print_rule(rule, rule[rule.size()-1]);
+        if(verbose)
+        {
+          std::cout << "Dsd:\n";
+          print_rule(rule, rule[rule.size()-1]);
+        }
 
         //aig_conversion
         auto aig_rule = map_to_aig(rule);
-        std::cout << "\nAig:\n";
-        print_rule(aig_rule, aig_rule[aig_rule.size()-1]);
+        if(verbose)
+        {
+          std::cout << "\nAig:\n";
+          print_rule(aig_rule, aig_rule[aig_rule.size()-1]);
+        }
 
         //derivation
         std::vector<std::vector<dsd_node>> der_rules = {};
         der_rules.push_back(aig_rule);
         std::vector<std::tuple<uint32_t, uint32_t>> depths = { { get_depth(aig_rule, aig_rule[aig_rule[aig_rule.size()-1].fanin[0].index]), get_depth(aig_rule, aig_rule[aig_rule[aig_rule.size()-1].fanin[1].index]) } };
         create_rules_from_dsd(der_rules, aig_rule, aig_rule[aig_rule.size()-1], depths, true, true);
-        std::cout << "\nDerived:\n";
+        if(verbose)
+        {
+          std::cout << "\nDerived:\n";
+        }
         for(auto elem : der_rules)
         {
           //indexing
-          do_indexing_rule(elem, elem[elem.size()-1], max_label);
-          _label_to_gate.insert({max_label, gate});
+          auto index_rule = do_indexing_rule(elem, elem[elem.size()-1], max_label);
 
-          print_rule(elem, elem[elem.size()-1]);
+          supergate<NInputs> sg = { &gate,
+                                    static_cast<float>( gate.area ),
+                                    gate.tdelay,
+                                    {},
+                                    0 };
+          auto match = _label_to_gate.find(index_rule);
+          if( match == _label_to_gate.end() )
+          {
+            std::vector<supergate<NInputs>> new_list = {};  
+            new_list.push_back(sg);        
+            _label_to_gate.insert( {index_rule, new_list} );
+          }
+          else
+          {
+            (match->second).push_back( sg );
+          }
+
+          if(verbose)
+          {
+            print_rule(elem, elem[elem.size()-1]);
+            std::cout << "\n";
+          }
+        }
+
+        if(verbose)
+        {
+          std::cout<<"\n";
+          std::cout << "And table:\n";
+          print_and_table();
           std::cout << "\n";
         }
-        std::cout<<"\n";
-
-        //and table print
-        std::cout << "And table:\n";
-        print_and_table();
       }
     }
     std::cout << "\n"; 
@@ -714,7 +774,7 @@ private:
           }
           else //it is root
           {
-            dsd_node new_root = {node_type::and_, rule.size() + 1, {{1, 0}, {1, n.index}}};
+            dsd_node new_root = {node_type::and_, rule.size(), {{1, 0}, {1, n.index}}};
             aig_rule.insert(aig_rule.begin(), new_root);
           }
         }
@@ -894,14 +954,19 @@ private:
     }
   }
 
-  uint32_t do_indexing_rule(rule r, dsd_node n, uint32_t& max)
+  label do_indexing_rule(rule r, dsd_node n, uint32_t& max)
   {
     if(n.type == node_type::pi_)
-      return 1;
+      return {0,1};
     if(n.type == node_type::zero_)
-      return 0;
-    uint32_t left_index = do_indexing_rule(r, r[n.fanin[0].index], max);
-    uint32_t right_index = do_indexing_rule(r, r[n.fanin[1].index], max);
+      return {0,0};
+    uint32_t left_index = do_indexing_rule(r, r[n.fanin[0].index], max).index;
+    uint32_t right_index = do_indexing_rule(r, r[n.fanin[1].index], max).index;
+
+    if(n.fanin[0].index == 0 && n.fanin[1].inv && n.index == r.size()-1) //it is an inverted function
+    {
+      return {1,right_index}; //index of not inverted function
+    }
     signal left, right;
     //do not consider invertion of PIs
     if(r[n.fanin[0].index].type == node_type::pi_)
@@ -918,10 +983,10 @@ private:
     std::tuple<signal, signal> left_right = std::make_tuple(left, right);
     auto match = _and_table.find( left_right );
     if ( match != _and_table.end() )
-      return match -> second;
+      return {0, match -> second};
     max++;
     _and_table.insert({left_right, max});
-    return max;
+    return {0, max};
   }
 
 private:
@@ -1126,7 +1191,6 @@ dsd_node shannon_dec( const TT& tt, int index, TT* func0 = nullptr, TT* func1 = 
 
   std::vector<gate> const _gates; /* collection of gates */
   super_lib const& _supergates_spec; /* collection of supergates declarations */
-  tech_library_params const _ps;
   super_utils<NInputs> _super; /* supergates generation */
   lib_t _super_lib; /* library of enumerated gates */
   lib_rule _dsd_map; /*hash map for dsd decomposition of gates*/

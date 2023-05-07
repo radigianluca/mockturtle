@@ -857,7 +857,7 @@ private:
   }
 
   //returns found and table index (or -1 if none is found)
-  int try_struct_match( cut& c1, cut& c2, std::vector<uint32_t> children_inv )
+  int try_struct_match( cut_t& c1, cut_t& c2, std::vector<uint32_t> children_inv )
   {
     std::vector<std::tuple<uint32_t, uint32_t>> signals = {};
     for(auto elem : children_inv)
@@ -866,8 +866,39 @@ private:
       signals.push_back(t);
     }
     //only for 2 inputs cases
-    auto res = struct_lib.get_and_table_value(t[0], t[1]);
+    auto res = struct_lib.get_and_table_value(signals[0], signals[1]);
     return res;
+  }
+
+  void create_struct_cut( cut_t& new_cut, cut_t* pc1, cut_t* pc2, int pat_ind )
+  {
+    new_cut.set_leaves( *pc1 ); //copy c1 in new cut
+    new_cut.add_leaves( pc2->begin(), pc2->end() );
+    new_cut->pattern_index = pat_ind;
+    auto neg_0 = ( pc1->data() ).negations[0] | ( ( pc2->data() ).negations[0] << pc1->size() );
+    auto neg_1 = ( pc1->data() ).negations[1] | ( ( pc2->data() ).negations[1] << pc1->size() );
+    new_cut->negations = { neg_0, neg_1 };
+  }
+
+  bool do_struct_match( cut_t& new_cut, cut_t* c1, cut_t* c2, std::vector<uint32_t>& children_inv )
+  {
+    cut_t *pc1 = c1;
+    cut_t *pc2 = c2;
+
+    if ( (c1->data()).pattern_index > (c2->data()).pattern_index )
+      std::swap( pc1, pc2 );
+
+    if( ( pc1->size() + pc2->size() ) > StructSize ) 
+      return false;
+
+    auto res = try_struct_match( *pc1, *pc2, children_inv );
+    if( res >= 0 )
+    {
+      //new cut generation 
+      create_struct_cut( new_cut, pc1, pc2, res );
+      return true;
+    }
+    return false;
   }
 
   template<bool DO_AREA>
@@ -883,7 +914,7 @@ private:
     std::vector<uint32_t> children_inv = {};
     ntk.foreach_fanin( ntk.index_to_node( index ), [&]( auto child, auto i ) {
       lcuts[i] = &cuts[ntk.node_to_index( ntk.get_node( child ) )];
-      children_inv.push_back(child.complement);
+      children_inv.push_back( child.complement );
     } );
     lcuts[2] = &cuts[index];
     auto& rcuts = *lcuts[fanin];
@@ -901,30 +932,10 @@ private:
         if ( !c1->merge( *c2, new_cut, CutSize ) )
         {
           boolean = false;
-
-          //fai un metodo da qui fino a 922
-          cut_t *pc1 = c1;
-          cut_t *pc2 = c2;
-
-          if ( c1->pattern_index > c2->pattern_index )
-            std::swap( pc1, pc2 );
-
-          if( ( pc1->size() + pc2->size() ) > StructSize ) 
-            continue;
-
-          auto res = try_struct_match( *pc1, *pc2, children_inv );
-
-          if( res >= 0 )
+          if( !do_struct_match( new_cut, c1, c2, children_inv ) );
           {
-            //new cut generation 
-            new_cut.set_leaves( *pc1 ); //copy c1 new cut
-            new_cut.add_leaves( pc2->begin(), pc2->end() );
-            new_cut->pattern_index = res;
-            new_cut->negations = {pc1->negations[0] | (pc2->negations[0] << pc1->size()), pc1->negations[1] | (pc2->negations[1] << pc1->size())}
-
-            //new cut in cuts, already done in rcuts (non usare per motivo di priority insertion)
+            continue;
           }
-
           //attempt struct match and check for eventual match
           //check sum sizes
           //create cut (no merge) con add_leaves to be created (on copy left cut)
@@ -983,9 +994,11 @@ private:
 
     /* compute cuts */
     std::vector<uint32_t> cut_sizes;
-    ntk.foreach_fanin( ntk.index_to_node( index ), [this, &cut_sizes]( auto child, auto i ) {
+    std::vector<uint32_t> children_inv = {};
+    ntk.foreach_fanin( ntk.index_to_node( index ), [this, &cut_sizes, &children_inv]( auto child, auto i ) {
       lcuts[i] = &cuts[ntk.node_to_index( ntk.get_node( child ) )];
       cut_sizes.push_back( static_cast<uint32_t>( lcuts[i]->size() ) );
+      children_inv.push_back ( child.complement );
     } );
     const auto fanin = cut_sizes.size();
     lcuts[fanin] = &cuts[index];
@@ -997,6 +1010,7 @@ private:
     if ( fanin > 1 && fanin <= ps.cut_enumeration_ps.fanin_limit )
     {
       cut_t new_cut, tmp_cut;
+      bool boolean = true;
 
       std::vector<cut_t const*> vcuts( fanin );
 
@@ -1010,15 +1024,27 @@ private:
 
         if ( !vcuts[0]->merge( *vcuts[1], new_cut, CutSize ) )
         {
-          return true; /* continue */
+          boolean = false;
+          if( !do_struct_match( new_cut, *vcuts[0], *vcuts[1], children_inv ) )
+            return true; /* continue */
         }
 
         for ( i = 2; i < fanin; ++i )
         {
           tmp_cut = new_cut;
-          if ( !vcuts[i]->merge( tmp_cut, new_cut, CutSize ) )
+          if(boolean)
           {
-            return true; /* continue */
+            if ( !vcuts[i]->merge( tmp_cut, new_cut, CutSize ) )
+            {
+              boolean = false;
+              if( !do_struct_match( new_cut, *vcuts[0], *vcuts[1], children_inv ) )
+                return true; /* continue */
+            }
+          }
+          else
+          {
+            if( !do_struct_match( new_cut, *vcuts[i], tmp_cut, children_inv ) )
+              return true;
           }
         }
 
@@ -1027,7 +1053,10 @@ private:
           return true; /* continue */
         }
 
-        compute_truth_table( index, vcuts, new_cut );
+        if(boolean)
+        {
+          compute_truth_table( index, vcuts, new_cut );
+        }
 
         /* match cut and compute data */
         compute_cut_data<DO_AREA>( new_cut, n );
@@ -2522,10 +2551,11 @@ private:
     }
 
     //get gates struct matching ask what to do for supergates and negations
-    auto const struct_gate = struct_lib.get_supergate( cut->pattern_index );
-    cut->supergates = { struct_gate };
-    //negation = c1.negation | c2.negation << c1.size()
-    //link canonical rule to negated rule in pattern generation already
+    auto patt_ind = cut->pattern_index;
+    auto const sg_pos = struct_lib.get_pos_gates( patt_ind ); 
+    auto const sg_neg = struct_lib.get_neg_gates( patt_ind ); 
+    cut->supergates = { sg_pos, sg_neg };
+    //negation = c1.negation | c2.negation << c1.size() already done in merge_cuts2
 
     /* compute cut cost based on LUT area */
     best_arrival = 0;
