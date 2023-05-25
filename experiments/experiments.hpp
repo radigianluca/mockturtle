@@ -532,6 +532,8 @@ inline bool abc_cec_impl( Ntk const& ntk, std::string const& benchmark_fullpath 
   std::string line;
   while ( std::getline( ss, line, '\n' ) )
   {
+    //debug
+    std::cout << line;
     if ( line.size() >= 23u && line.substr( 0u, 23u ) == "Networks are equivalent" )
     {
       return true;

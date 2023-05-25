@@ -2,5 +2,109 @@
   {
     "entries": null,
     "version": "eed1781"
+  },
+  {
+    "entries": [
+      {
+        "area_after": 12.0,
+        "benchmark": "c17",
+        "cec": true,
+        "delay_after": 3.0,
+        "depth": 3,
+        "runtime": 0.0008848999859765172,
+        "size": 6
+      },
+      {
+        "area_after": 475.0,
+        "benchmark": "c432",
+        "cec": true,
+        "delay_after": 22.00000011920929,
+        "depth": 26,
+        "runtime": 0.010807500220835209,
+        "size": 208
+      },
+      {
+        "area_after": 1039.0,
+        "benchmark": "c499",
+        "cec": true,
+        "delay_after": 17.59999990463257,
+        "depth": 19,
+        "runtime": 0.021429799497127533,
+        "size": 398
+      },
+      {
+        "area_after": 603.0,
+        "benchmark": "c880",
+        "cec": true,
+        "delay_after": 18.399999976158142,
+        "depth": 25,
+        "runtime": 0.025801099836826324,
+        "size": 325
+      },
+      {
+        "area_after": 1346.0,
+        "benchmark": "c1355",
+        "cec": true,
+        "delay_after": 21.5,
+        "depth": 25,
+        "runtime": 0.02771330066025257,
+        "size": 502
+      },
+      {
+        "area_after": 729.0,
+        "benchmark": "c1908",
+        "cec": true,
+        "delay_after": 23.700000047683716,
+        "depth": 27,
+        "runtime": 0.01633399911224842,
+        "size": 341
+      },
+      {
+        "area_after": 1261.0,
+        "benchmark": "c2670",
+        "cec": true,
+        "delay_after": 16.99999988079071,
+        "depth": 20,
+        "runtime": 0.03525250032544136,
+        "size": 716
+      },
+      {
+        "area_after": 1925.0,
+        "benchmark": "c3540",
+        "cec": true,
+        "delay_after": 31.50000011920929,
+        "depth": 41,
+        "runtime": 0.056382499635219574,
+        "size": 1024
+      },
+      {
+        "area_after": 3134.0,
+        "benchmark": "c5315",
+        "cec": true,
+        "delay_after": 31.300000190734863,
+        "depth": 37,
+        "runtime": 0.07324270159006119,
+        "size": 1776
+      },
+      {
+        "area_after": 6468.0,
+        "benchmark": "c6288",
+        "cec": true,
+        "delay_after": 103.20000100135803,
+        "depth": 120,
+        "runtime": 0.11466629803180695,
+        "size": 2337
+      },
+      {
+        "area_after": 2984.0,
+        "benchmark": "c7552",
+        "cec": true,
+        "delay_after": 22.40000021457672,
+        "depth": 26,
+        "runtime": 0.08139009773731232,
+        "size": 1469
+      }
+    ],
+    "version": "5fe0e71"
   }
 ]

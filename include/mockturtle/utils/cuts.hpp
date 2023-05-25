@@ -260,6 +260,7 @@ void cut<MaxLeaves, T>::add_leaves( Iterator begin, Iterator end )
 {
   _cend = _end = std::copy( begin, end, _end );
   _length = static_cast<uint32_t>( std::distance( _leaves.begin(), _end ) );
+  //std::sort(_leaves.begin(), _end ); 
 
   while ( begin != end )
   {

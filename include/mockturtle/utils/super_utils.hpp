@@ -80,6 +80,34 @@ struct composed_gate
   std::vector<composed_gate<NInputs>*> fanin{};
 };
 
+/*template<unsigned NInputs, unsigned NewInputs>
+composed_gate<NewInputs> extend_composed_gate( composed_gate<NInputs> gate )
+{
+  kitty::dynamic_truth_table new_function = kitty::extend_to( gate.function, NewInputs );
+  std::array<float, NewInputs> new_tdelay;
+  for(int i = 0; i < NInputs; i++)
+  {
+    new_tdelay[i] = gate.tdelay[i];
+  }
+  std::vector<composed_gate<NewInputs>*> new_fanin;
+  for(auto cg : *(gate.fanin))
+  {
+    auto new_cg = extend_composed_gate<NInputs, NewInputs>( cg );
+    new_fanin.push_back( &new_cg );
+  }
+  composed_gate<NewInputs> cg = { gate.id,
+                                  gate.is_super,
+                                  gate.root,
+                                  gate.num_vars,
+                                  new_function,
+                                  gate.area,
+                                  new_tdelay,
+                                  new_fanin
+  }
+
+  return cg;
+}*/
+
 /*! \brief Utilities to generate supergates
  *
  * This class creates supergates starting from supergates

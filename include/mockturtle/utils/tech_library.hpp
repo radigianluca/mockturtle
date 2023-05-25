@@ -115,6 +115,25 @@ struct supergate
   uint16_t polarity{ 0 };
 };
 
+/*template<unsigned NInputs, unsigned NewInputs>
+supergate<NewInputs> extend_supergate( supergate<NInputs> gate )
+{
+  auto r = *gate.root;
+  auto new_r = extend_composedgate( r );
+  std::array<float, NewInputs> new_tdelay;
+  for(int i = 0; i < NInputs; i++)
+  {
+    new_tdelay[i] = gate.tdelay[i];
+  }
+  supergate<NewInputs> sg = { new_r,
+                              gate.area,
+                              new_tdelay,
+                              gate.permutation,
+                              gate.polarity
+  };
+  return sg;
+}*/
+
 /*! \brief Library of gates for Boolean matching
  *
  * This class creates a technology library from a set

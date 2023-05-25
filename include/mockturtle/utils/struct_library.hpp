@@ -176,7 +176,7 @@ class struct_library
   using lib_rule = phmap::flat_hash_map<kitty::dynamic_truth_table, std::vector<dsd_node>, kitty::hash<kitty::dynamic_truth_table>>;
   using rule = std::vector<dsd_node>;
   using lib_table = phmap::flat_hash_map<std::tuple<signal, signal>, uint32_t, tuple_s_hash>;
-  using map_label_gate = phmap::flat_hash_map<label, supergates_list_t, label_hash>;
+  using map_label_gate = std::unordered_map<label, supergates_list_t, label_hash>;
 
 public:
 
@@ -290,7 +290,6 @@ public:
       : _gates( gates ),
         _supergates_spec( supergates_spec ),
         _super( _gates, _supergates_spec ),
-        _use_supergates( false ),
         _super_lib(),
         _dsd_map()
   {
@@ -326,12 +325,21 @@ public:
     return -1;
   }
 
-  const int get_and_table_value(std::tuple<uint32_t, uint32_t> t1, std::tuple<uint32_t, uint32_t> t2) const
+  const int get_and_table_value(uint32_t t1, uint32_t t2) const
   {
-    signal l = {std::get<0>(t1), std::get<1>(t1)};
-    signal r = {std::get<0>(t2), std::get<1>(t2)};
-    std::tuple<signal, signal> lr = std::make_tuple(l, r);
-    auto match = _and_table.find(lr);
+    signal l, r;
+    l.data = t1;
+    if(l.data == 3) //if it is a primary input negated, do not consider the negation
+      l.data = 2;
+    r.data = t2;
+    if(r.data == 3)
+      r.data = 2;
+    std::tuple<signal, signal> key;
+    if(l.index < r.index)
+      key = std::make_tuple(l, r);
+    else
+      key = std::make_tuple(r, l);
+    auto match = _and_table.find(key);
     if ( match != _and_table.end() )
       return match -> second;
     return -1;
@@ -367,21 +375,40 @@ public:
     return nullptr;
   }
 
+  bool structure_is_XOR( uint32_t index )
+  {
+    if( std::find(index_xors.begin(), index_xors.end(), index ) != index_xors.end() )
+      return true;
+    return false;
+  }
+
+  bool gate_is_XOR( uint32_t id )
+  { 
+    if( std::find(id_xors.begin(), id_xors.end(), id ) != id_xors.end() )
+      return true;
+    return false;
+  }
+
 private:
   void generate_library(uint8_t verbose)
   {
-    auto supergates = _super.get_super_library();
+    auto const& supergates = _super.get_super_library(); //make sure it does not make copy
+    std::vector<uint32_t> indexes (supergates.size());
+    std::iota(indexes.begin(), indexes.end(), 0);
     uint32_t const standard_gate_size = _super.get_standard_library_size();
     uint32_t max_label = 1;
+    uint32_t gate_pol = 0; //polarity of AND equivalent gate
+    uint32_t shift = 0;
+    bool is_xor = false;
 
     //sort increasing order of area
-    sort(supergates.begin(), supergates.end(), 
-      []( auto const& gate1, auto const& gate2) -> bool {
-      return gate1.area < gate2.area;
+    sort(indexes.begin(), indexes.end(), 
+      [&]( auto const& a, auto const& b) -> bool {
+      return supergates[a].area < supergates[b].area;
     });
-
-    for(const auto& gate : supergates)
-    {
+    for(auto const& ind : indexes)
+    { 
+      auto const& gate = supergates[ind];
       if(gate.num_vars > 1)
       {
         //decomposition
@@ -399,6 +426,17 @@ private:
         {
           std::cout << "Dsd:\n";
           print_rule(rule, rule[rule.size()-1]);
+        }
+
+        //check for xor
+        if( check_XOR( rule ) )
+        {
+          is_xor = true;
+          id_xors.push_back(gate.id);
+        }
+        else
+        {
+          is_xor = false;
         }
 
         //aig_conversion
@@ -420,30 +458,51 @@ private:
         }
         for(auto elem : der_rules)
         {
-          //indexing
-          auto index_rule = do_indexing_rule(elem, elem[elem.size()-1], max_label);
+          gate_pol = 0; //polarity of AND equivalent gate
+          shift = 0;
+          std::vector<uint8_t> perm( gate.num_vars );
+          //indexing and gate polarity
+          auto index_rule = do_indexing_rule(elem, elem[elem.size()-1], max_label, gate_pol, perm, shift );
 
           supergate<NInputs> sg = { &gate,
                                     static_cast<float>( gate.area ),
                                     gate.tdelay,
-                                    {},
-                                    0 };
-          auto match = _label_to_gate.find(index_rule);
-          if( match == _label_to_gate.end() )
-          {
-            std::vector<supergate<NInputs>> new_list = {};  
-            new_list.push_back(sg);        
-            _label_to_gate.insert( {index_rule, new_list} );
-          }
-          else
-          {
-            (match->second).push_back( sg );
-          }
+                                    perm,
+                                    gate_pol };
+
+          auto& v = _label_to_gate[index_rule];
+
+          /* ordered insert by ascending area and number of input pins */
+          auto it = std::lower_bound( v.begin(), v.end(), sg, [&]( auto const& s1, auto const& s2 ) {
+            if ( s1.area < s2.area )
+              return true;
+            if ( s1.area > s2.area )
+              return false;
+            if ( s1.root->num_vars < s2.root->num_vars )
+              return true;
+            if ( s1.root->num_vars > s2.root->num_vars )
+              return true;
+            return s1.root->id < s2.root->id;
+          } );
+
+          v.insert( it, sg );
+
+          //check for XOR
+          if( is_xor )
+            index_xors.push_back( index_rule.index );
 
           if(verbose)
           {
             print_rule(elem, elem[elem.size()-1]);
             std::cout << "\n";
+            for(const std::pair<label, supergates_list_t>& elem : _label_to_gate)
+            {
+              std::cout << elem.first.data << "\n";
+              for(auto sg : elem.second)
+              {
+               std::cout << (sg.root)->root->expression << "\n";
+              }
+            }
           }
         }
 
@@ -456,7 +515,18 @@ private:
         }
       }
     }
-    std::cout << "\n"; 
+    if(verbose)
+      std::cout << "\n";
+  }
+
+  bool check_XOR( rule r )
+  {
+    for(auto n : r)
+    {
+      if( n.type == node_type::xor_ )
+        return true;
+    }
+    return false;
   }
 
   int try_top_dec(kitty::dynamic_truth_table& tt, int num_vars)
@@ -464,7 +534,7 @@ private:
     int i = 0;
     for(;i < num_vars;i++)
     {
-      auto res = is_top_dec(tt, i);
+      auto res = is_top_dec(tt, i, true);
       if(res.type != node_type::none)
         break;
     }
@@ -473,7 +543,7 @@ private:
 
   dsd_node do_top_dec(kitty::dynamic_truth_table& tt, int index, std::vector<int> mapped_support)
   {
-    auto node = is_top_dec(tt, index, &tt, false);
+    auto node = is_top_dec(tt, index, true, &tt);
 
     node.fanin[0].index = mapped_support[index];
     return node;
@@ -795,7 +865,7 @@ private:
             dsd_node node_and1 = {node_type::and_, n.index+1, { {0, n.fanin[2].index}, {n.fanin[1].inv, n.fanin[1].index} } };
             new_node = {node_type::and_, n.index, { {1, n.fanin[2].index}, {n.fanin[0].inv, n.fanin[0].index} } }; //and0_node
 
-            //node already in aig_rule must have index and fanin index update (index += 2, fanin_index -> (>= n.index -> +2; nothig))
+            //node already in aig_rule must have index and fanin index update (index += 2, fanin_index -> (>= n.index -> +2; nothing))
             for(auto& elem : aig_rule)
             {
               elem.index += 2;
@@ -815,6 +885,50 @@ private:
             dsd_node node_or = {node_type::and_, rule.size()+1, { {1, rule.size()-1}, {1, rule.size()} } };
             dsd_node node_and1 = {node_type::and_, rule.size(), { {0, n.fanin[2].index}, {n.fanin[1].inv, n.fanin[1].index} } };
             new_node = {node_type::and_, rule.size()-1, { {1, n.fanin[2].index}, {n.fanin[0].inv, n.fanin[0].index} } }; //and0_node
+
+            aig_rule.insert(aig_rule.begin(), new_root);
+            aig_rule.insert(aig_rule.begin(), node_or);
+            aig_rule.insert(aig_rule.begin(), node_and1);
+
+          }
+        }
+        else if(n.type == node_type::xor_)
+        {
+          if(get_father(rule, n) != NULL)
+          {
+            dsd_node* father = find_node(aig_rule, get_father(rule, n)->index);
+            if(father->fanin[0].index == n.index)
+            {
+              father->fanin[0].inv = ~father->fanin[0].inv;
+            }
+            else
+            {
+              father->fanin[1].inv = ~father->fanin[1].inv;
+            }
+            dsd_node node_or = {node_type::and_, n.index+2, { {1, n.index}, {1, n.index+1} } };
+            dsd_node node_and1 = {node_type::and_, n.index+1, { {0, n.fanin[0].index}, {1, n.fanin[1].index} } };
+            new_node = {node_type::and_, n.index, { {1, n.fanin[0].index}, {0, n.fanin[1].index} } }; //and0_node
+
+            //node already in aig_rule must have index and fanin index update (index += 2, fanin_index -> (>= n.index -> +2; nothing))
+            for(auto& elem : aig_rule)
+            {
+              elem.index += 2;
+              for(auto& s : elem.fanin)
+              {
+                if(s.index >= n.index)
+                  s.index += 2;
+              }
+            }
+            
+            aig_rule.insert(aig_rule.begin(), node_or);
+            aig_rule.insert(aig_rule.begin(), node_and1);
+          }
+          else //it is root
+          {
+            dsd_node new_root = {node_type::and_, rule.size() + 2, {{1, 0}, {1, rule.size()+1}}};
+            dsd_node node_or = {node_type::and_, rule.size()+1, { {1, rule.size()-1}, {1, rule.size()} } };
+            dsd_node node_and1 = {node_type::and_, rule.size(), { {0, n.fanin[0].index}, {1, n.fanin[1].index} } };
+            new_node = {node_type::and_, rule.size()-1, { {1, n.fanin[0].index}, {0, n.fanin[1].index} } }; //and0_node
 
             aig_rule.insert(aig_rule.begin(), new_root);
             aig_rule.insert(aig_rule.begin(), node_or);
@@ -954,14 +1068,29 @@ private:
     }
   }
 
-  label do_indexing_rule(rule r, dsd_node n, uint32_t& max)
+  label do_indexing_rule(rule r, dsd_node n, uint32_t& max, uint32_t& sg_polarity, std::vector<uint8_t>& perm, uint32_t& shift)
   {
     if(n.type == node_type::pi_)
+    {
+      perm[shift] = n.index-1;
       return {0,1};
+    }
     if(n.type == node_type::zero_)
       return {0,0};
-    uint32_t left_index = do_indexing_rule(r, r[n.fanin[0].index], max).index;
-    uint32_t right_index = do_indexing_rule(r, r[n.fanin[1].index], max).index;
+    uint32_t left_index = do_indexing_rule(r, r[n.fanin[0].index], max, sg_polarity, perm, shift).index;
+    //polarity
+    if(r[n.fanin[0].index].type == node_type::pi_)
+    {
+      sg_polarity |= ( n.fanin[0].inv << shift );
+      shift++;
+    }
+    uint32_t right_index = do_indexing_rule(r, r[n.fanin[1].index], max, sg_polarity, perm, shift).index;
+    //polarity
+    if(r[n.fanin[1].index].type == node_type::pi_)
+    {
+      sg_polarity |= ( n.fanin[1].inv << shift );
+      shift++;
+    }
 
     if(n.fanin[0].index == 0 && n.fanin[1].inv && n.index == r.size()-1) //it is an inverted function
     {
@@ -980,19 +1109,23 @@ private:
       right.inv = (uint64_t)n.fanin[1].inv;
     right.index = right_index;
 
-    std::tuple<signal, signal> left_right = std::make_tuple(left, right);
-    auto match = _and_table.find( left_right );
+    std::tuple<signal, signal> t;
+    if(left.index <= right.index)
+      t = std::make_tuple(left, right);
+    else
+      t = std::make_tuple(right, left);
+    auto match = _and_table.find( t );
     if ( match != _and_table.end() )
       return {0, match -> second};
     max++;
-    _and_table.insert({left_right, max});
+    _and_table.insert({t, max});
     return {0, max};
   }
 
 private:
 
   template<class TT>  
-  dsd_node is_top_dec( const TT& tt, int var_index, TT* func = nullptr, bool allow_xor = false )
+  dsd_node is_top_dec( const TT& tt, int var_index, bool allow_xor = false, TT* func = nullptr )
   {
     static_assert( kitty::is_complete_truth_table<TT>::value, "Can only be applied on complete truth tables." );
 
@@ -1186,10 +1319,9 @@ dsd_node shannon_dec( const TT& tt, int index, TT* func0 = nullptr, TT* func1 = 
 
     return res;
 }
-
-  bool _use_supergates; 
-
   std::vector<gate> const _gates; /* collection of gates */
+  std::vector<uint32_t> index_xors; /* XORs are problematic for structural matching, keep track of them*/
+  std::vector<uint32_t> id_xors; /* XORs are problematic for structural matching, keep track of them*/
   super_lib const& _supergates_spec; /* collection of supergates declarations */
   super_utils<NInputs> _super; /* supergates generation */
   lib_t _super_lib; /* library of enumerated gates */

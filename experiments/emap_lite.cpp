@@ -29,6 +29,7 @@
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
 #include <lorina/genlib.hpp>
+#include <lorina/verilog.hpp>
 #include <mockturtle/algorithms/experimental/emap_lite.hpp>
 #include <mockturtle/algorithms/aig_balancing.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
@@ -39,6 +40,10 @@
 #include <mockturtle/utils/struct_library.hpp>
 #include <mockturtle/views/binding_view.hpp>
 #include <mockturtle/views/depth_view.hpp>
+#include <mockturtle/io/write_verilog.hpp>
+#include <mockturtle/io/write_dot.hpp>
+#include <mockturtle/io/write_aiger.hpp>
+#include <mockturtle/io/verilog_reader.hpp>
 
 #include <experiments.hpp>
 
@@ -63,15 +68,26 @@ std::string const mcnc_library = "GATE   inv1    1  O=!a;             PIN * INV 
                                  "GATE   oai21   3  O=!((a+b)*c);     PIN * INV 1 999 1.6 0.4 1.6 0.4\n"
                                  "GATE   oai22   4  O=!((a+b)*(c+d)); PIN * INV 1 999 2.0 0.4 2.0 0.4\n"
                                  "GATE   or6     6  O=(a+b+c+d+e+f);  PIN * INV 1 999 2.0 0.4 2.0 0.4\n"
+                                 "#GATE   and6    6  O=(a*b*c*d*e*f);  PIN * INV 1 999 2.0 0.4 2.0 0.4\n"
                                  "GATE   buf     2  O=a;              PIN * NONINV 1 999 1.0 0.0 1.0 0.0\n"
                                  "GATE   zero    0  O=CONST0;\n"
                                  "GATE   one     0  O=CONST1;";
 
+using namespace experiments;
+using namespace mockturtle;
+
+std::string bench_name = "custom_benchmark";
+std::string bench_full_name = "/home/radi/RA/mockturtle/experiments/benchmarks/" + bench_name;
+std::string res_full_name = "result.v";
+std::string dot_aig_full_name = "aig.dot";
+std::string dot_res_full_name = "result.dot";
+
+
+
+
 int main()
 {
-  using namespace experiments;
-  using namespace mockturtle;
-
+  
   experiment<std::string, uint32_t, double, uint32_t, double, float, bool> exp(
       "emap", "benchmark", "size", "area_after", "depth", "delay_after", "runtime", "cec" );
 
@@ -79,7 +95,8 @@ int main()
 
   /* library to map to technology */
   std::vector<gate> gates;
-  std::stringstream in( mcnc_library );
+  //std::ifstream in( "/home/radi/RA/mockturtle/asap_smp.genlib" ); //library or9
+  std::stringstream in ( mcnc_library );
 
   if ( lorina::read_genlib( in, genlib_reader( gates ) ) != lorina::return_code::success )
   {
@@ -93,17 +110,26 @@ int main()
   tps.verbose = true;
   tech_library<6, classification_type::np_configurations> tech_lib( gates, tps );
 
-  for ( auto const& benchmark : epfl_benchmarks() )
+  for ( auto const& benchmark : iscas_benchmarks( ) ) //iscas_benchmarks() //or 2nd epfl benchmarks // experiments::bar
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
     aig_network aig;
-    if ( lorina::read_aiger( "optimized/" + benchmark + ".aig", aiger_reader( aig ) ) != lorina::return_code::success )
-    {
-      continue;
-    }
 
-    aig_balance( aig );
+    if ( lorina::read_aiger( benchmark_path(benchmark), aiger_reader( aig ) ) != lorina::return_code::success )
+     continue;
+
+    /*if ( lorina::read_verilog( bench_full_name + ".v", verilog_reader( aig ) ) != lorina::return_code::success )
+      continue;*/
+    
+    //verification format
+    write_aiger(aig, bench_full_name + ".aig" );
+
+    //aig_balance( aig );
+
+    write_dot(aig, dot_aig_full_name);
+
+    write_verilog(aig, "aig_balanced.v");
 
     const uint32_t size_before = aig.num_gates();
     const uint32_t depth_before = depth_view( aig ).depth();
@@ -112,9 +138,16 @@ int main()
     ps.verbose = true;
     emap_lite_stats st;
 
+    //cut size = 6 and Ninputs = 6
+    binding_view<klut_network> res = emap_lite<aig_network, 6, 6>( aig, tech_lib, str_lib, ps, &st );
 
-    //change to be >6
-    binding_view<klut_network> res = emap_lite<aig_network, 5, 6>( aig, tech_lib, str_lib, ps, &st );
+    res.report_gates_usage();
+
+    write_verilog_with_binding(res, res_full_name);
+
+    write_dot(res, dot_res_full_name);
+
+    //bool const cec = benchmark != "hyp" ? abc_cec( res, bench_name ) : true;
 
     bool const cec = benchmark != "hyp" ? abc_cec( res, benchmark ) : true;
 
