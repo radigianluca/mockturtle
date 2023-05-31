@@ -95,8 +95,8 @@ int main()
 
   /* library to map to technology */
   std::vector<gate> gates;
-  //std::ifstream in( "/home/radi/RA/mockturtle/asap_smp.genlib" ); //library or9
-  std::stringstream in ( mcnc_library );
+  std::ifstream in( "/home/radi/RA/mockturtle/asap_smp.genlib" ); //library or9
+  //std::stringstream in ( mcnc_library );
 
   if ( lorina::read_genlib( in, genlib_reader( gates ) ) != lorina::return_code::success )
   {
@@ -104,7 +104,7 @@ int main()
   }
 
    //compute struct library
-  struct_library<6> str_lib( gates );
+  struct_library<6> str_lib( gates, {}, 1 );
 
   tech_library_params tps;
   tps.verbose = true;
@@ -116,11 +116,11 @@ int main()
 
     aig_network aig;
 
-    if ( lorina::read_aiger( benchmark_path(benchmark), aiger_reader( aig ) ) != lorina::return_code::success )
-     continue;
+    /*if ( lorina::read_aiger( benchmark_path(benchmark), aiger_reader( aig ) ) != lorina::return_code::success )
+     continue;*/
 
-    /*if ( lorina::read_verilog( bench_full_name + ".v", verilog_reader( aig ) ) != lorina::return_code::success )
-      continue;*/
+    if ( lorina::read_verilog( bench_full_name + ".v", verilog_reader( aig ) ) != lorina::return_code::success )
+      continue;
     
     //verification format
     write_aiger(aig, bench_full_name + ".aig" );
@@ -147,9 +147,9 @@ int main()
 
     write_dot(res, dot_res_full_name);
 
-    //bool const cec = benchmark != "hyp" ? abc_cec( res, bench_name ) : true;
+    bool const cec = benchmark != "hyp" ? abc_cec( res, bench_name ) : true;
 
-    bool const cec = benchmark != "hyp" ? abc_cec( res, benchmark ) : true;
+    //bool const cec = benchmark != "hyp" ? abc_cec( res, benchmark ) : true;
 
     exp( benchmark, size_before, st.area, depth_before, st.delay, to_seconds( st.time_total ), cec );
   }

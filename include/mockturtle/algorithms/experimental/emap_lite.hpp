@@ -187,8 +187,6 @@ struct cut_enumeration_emap_lite_cut
   std::array<uint16_t, 2> negations{ 0, 0 };
   /* input negations for structural match, 0: pos, 1: neg */
   std::array<uint16_t, 2> str_negations{ 0, 0 };
-  /* struct cut cannot be a xor but has the same structure */
-  bool str_false_xor{ false };
 };
 
 struct cut_enumeration_emap_lite_multi_cut
@@ -864,17 +862,6 @@ private:
     return success;
   }
 
-  bool check_XOR( cut_t c1, cut_t c2 )
-  {
-    if( c1.size() != c2.size() )
-      return false;
-    cut_t merge_cut;
-    c1.merge( c2, merge_cut, StructSize );
-    if( merge_cut.size() != c1.size() )
-      return false;
-    return true;
-  }
-
   //returns found and table index (or -1 if none is found)
   int try_struct_match( cut_t& c1, cut_t& c2, std::vector<uint32_t> children_inv, cut_t& new_cut )
   {
@@ -884,13 +871,6 @@ private:
     uint32_t sig0 = neg0 | (c1->pattern_index << 1);
     uint32_t sig1 = neg1 | (c2->pattern_index << 1);
     auto res = struct_lib.get_and_table_value( sig0, sig1 );
-    new_cut->str_false_xor = false;
-    /* if structure is the same of XOR, check if it can be mapped with a XOR */
-    if( struct_lib.structure_is_XOR( res ) ) 
-      if( !check_XOR( c1, c2 ) )
-        new_cut->str_false_xor = true;
-      else
-        new_cut->str_false_xor = false;
     return res;
   }
 
@@ -979,6 +959,10 @@ private:
 
     cut_t new_cut, bool_cut, struct_cut;
     std::vector<cut_t const*> vcuts( fanin );
+
+    //debug
+    std::cout << "Index " << index << "\n";
+    std::cout << "Children inv0 " << children_inv[0] << " children inv1 " << children_inv[1] << "\n";
 
     for ( auto const& c1 : *lcuts[0] )
     {
@@ -1699,10 +1683,6 @@ private:
       /* match each gate and take the best one */
       for ( auto const& gate : *supergates[phase] )
       {
-        
-        //check on false xor for struct matching
-        if( struct_lib.gate_is_XOR( (gate.root)->id ) && ( *cut )->str_false_xor )
-          continue;
 
         uint8_t gate_polarity = gate.polarity ^ negation;
         double worst_arrival = 0.0f;
@@ -1795,10 +1775,6 @@ private:
       /* match each gate and take the best one */
       for ( auto const& gate : *supergates[phase] )
       {
-
-        //check on false xor for struct matching
-        if( struct_lib.gate_is_XOR( (gate.root)->id ) && ( *cut )->str_false_xor )
-          continue;
 
         uint8_t gate_polarity = gate.polarity ^ negation;
         double worst_arrival = 0.0f;

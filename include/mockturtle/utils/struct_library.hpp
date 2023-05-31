@@ -27,45 +27,15 @@
 namespace mockturtle
 {
 
-/*
-std::string const mcnc_library = "GATE   inv1    1  O=!a;             PIN * INV 1 999 0.9 0.3 0.9 0.3\n"
-                                 "GATE   inv2    2  O=!a;             PIN * INV 2 999 1.0 0.1 1.0 0.1\n"
-                                 "GATE   inv3    3  O=!a;             PIN * INV 3 999 1.1 0.09 1.1 0.09\n"
-                                 "GATE   inv4    4  O=!a;             PIN * INV 4 999 1.2 0.07 1.2 0.07\n"
-                                 "GATE   nand2   2  O=!(a*b);         PIN * INV 1 999 1.0 0.2 1.0 0.2\n"
-                                 "GATE   nand3   3  O=!(a*b*c);       PIN * INV 1 999 1.1 0.3 1.1 0.3\n"
-                                 "GATE   nand4   4  O=!(a*b*c*d);     PIN * INV 1 999 1.4 0.4 1.4 0.4\n"
-                                 "GATE   nor2    2  O=!(a+b);         PIN * INV 1 999 1.4 0.5 1.4 0.5\n"
-                                 "GATE   nor3    3  O=!(a+b+c);       PIN * INV 1 999 2.4 0.7 2.4 0.7\n"
-                                 "GATE   nor4    4  O=!(a+b+c+d);     PIN * INV 1 999 3.8 1.0 3.8 1.0\n"
-                                 "GATE   and2    3  O=a*b;            PIN * NONINV 1 999 1.9 0.3 1.9 0.3\n"
-                                 "GATE   or2     3  O=a+b;            PIN * NONINV 1 999 2.4 0.3 2.4 0.3\n"
-                                 "GATE   xor2a   5  O=a*!b+!a*b;      PIN * UNKNOWN 2 999 1.9 0.5 1.9 0.5\n"
-                                 "#GATE  xor2b   5  O=!(a*b+!a*!b);   PIN * UNKNOWN 2 999 1.9 0.5 1.9 0.5\n"
-                                 "GATE   xnor2a  5  O=a*b+!a*!b;      PIN * UNKNOWN 2 999 2.1 0.5 2.1 0.5\n"
-                                 "#GATE  xnor2b  5  O=!(a*!b+!a*b);   PIN * UNKNOWN 2 999 2.1 0.5 2.1 0.5\n"
-                                 "GATE   aoi21   3  O=!(a*b+c);       PIN * INV 1 999 1.6 0.4 1.6 0.4\n"
-                                 "GATE   aoi22   4  O=!(a*b+c*d);     PIN * INV 1 999 2.0 0.4 2.0 0.4\n"
-                                 "GATE   oai21   3  O=!((a+b)*c);     PIN * INV 1 999 1.6 0.4 1.6 0.4\n"
-                                 "GATE   oai22   4  O=!((a+b)*(c+d)); PIN * INV 1 999 2.0 0.4 2.0 0.4\n"
-                                 "GATE   buf     2  O=a;              PIN * NONINV 1 999 1.0 0.0 1.0 0.0\n"
-                                 "GATE   zero    0  O=CONST0;\n"
-                                 "GATE   one     0  O=CONST1;";
-*/
 
-/*! \brief Library of gates for Boolean matching
+/*! \brief Library of gates for Structural matching
  *
  * This class creates a technology library from a set
- * of input gates. Each NP- or P-configuration of the gates
- * are enumerated and inserted in the library.
+ * of input gates.
  * 
- * The configuration is selected using the template
- * parameter `Configuration`. P-configuration is suggested
- * for big libraries with few symmetric gates. The template
- * parameter `NInputs` selects the maximum number of variables
+ * The template parameter `NInputs` selects the maximum number of variables
  * allowed for a gate in the library.
  * 
- * The library can be generated also using supergates definitions.
  *
    \verbatim embed:rst
 
@@ -375,20 +345,6 @@ public:
     return nullptr;
   }
 
-  bool structure_is_XOR( uint32_t index )
-  {
-    if( std::find(index_xors.begin(), index_xors.end(), index ) != index_xors.end() )
-      return true;
-    return false;
-  }
-
-  bool gate_is_XOR( uint32_t id )
-  { 
-    if( std::find(id_xors.begin(), id_xors.end(), id ) != id_xors.end() )
-      return true;
-    return false;
-  }
-
 private:
   void generate_library(uint8_t verbose)
   {
@@ -399,7 +355,6 @@ private:
     uint32_t max_label = 1;
     uint32_t gate_pol = 0; //polarity of AND equivalent gate
     uint32_t shift = 0;
-    bool is_xor = false;
 
     //sort increasing order of area
     sort(indexes.begin(), indexes.end(), 
@@ -407,7 +362,7 @@ private:
       return supergates[a].area < supergates[b].area;
     });
     for(auto const& ind : indexes)
-    { 
+    {
       auto const& gate = supergates[ind];
       if(gate.num_vars > 1)
       {
@@ -421,22 +376,16 @@ private:
         }
         auto cpy = gate.function;
         compute_dsd(cpy, support, rule);
+        if(!gate_disjoint)
+        {
+          gate_disjoint = true;
+          continue;
+        }
         _dsd_map.insert({gate.function, rule});
         if(verbose)
         {
           std::cout << "Dsd:\n";
           print_rule(rule, rule[rule.size()-1]);
-        }
-
-        //check for xor
-        if( check_XOR( rule ) )
-        {
-          is_xor = true;
-          id_xors.push_back(gate.id);
-        }
-        else
-        {
-          is_xor = false;
         }
 
         //aig_conversion
@@ -487,10 +436,6 @@ private:
 
           v.insert( it, sg );
 
-          //check for XOR
-          if( is_xor )
-            index_xors.push_back( index_rule.index );
-
           if(verbose)
           {
             print_rule(elem, elem[elem.size()-1]);
@@ -519,22 +464,12 @@ private:
       std::cout << "\n";
   }
 
-  bool check_XOR( rule r )
-  {
-    for(auto n : r)
-    {
-      if( n.type == node_type::xor_ )
-        return true;
-    }
-    return false;
-  }
-
   int try_top_dec(kitty::dynamic_truth_table& tt, int num_vars)
   {
     int i = 0;
     for(;i < num_vars;i++)
     {
-      auto res = is_top_dec(tt, i, true);
+      auto res = is_top_dec(tt, i, false);
       if(res.type != node_type::none)
         break;
     }
@@ -543,7 +478,7 @@ private:
 
   dsd_node do_top_dec(kitty::dynamic_truth_table& tt, int index, std::vector<int> mapped_support)
   {
-    auto node = is_top_dec(tt, index, true, &tt);
+    auto node = is_top_dec(tt, index, false, &tt);
 
     node.fanin[0].index = mapped_support[index];
     return node;
@@ -635,7 +570,7 @@ private:
     return -1;
   }
 
-  int compute_dsd(kitty::dynamic_truth_table& tt, std::vector<int> mapped_support, std::vector<dsd_node>& rule)
+  int compute_dsd(kitty::dynamic_truth_table& tt, std::vector<int> mapped_support, std::vector<dsd_node>& rule )
   {
     //tt has been already found
     if(!get_rules(tt).empty())
@@ -689,7 +624,7 @@ private:
 
       if(is_PI(tt_shr, tt_shr.num_vars()) < 0 && is_inv_PI(tt_shr, tt_shr.num_vars()) < 0) //check if remainder is PI
       {
-        res.fanin.push_back({0,compute_dsd(tt_shr, mapped_support, rule)});
+        res.fanin.push_back({0,compute_dsd(tt_shr, mapped_support, rule )});
       }
       else
       {
@@ -722,7 +657,7 @@ private:
         kitty::dynamic_truth_table tt_shr(tt.num_vars()-1);
         min_base_shrink(tt, tt_shr);
 
-        return compute_dsd(tt_shr, mapped_support, rule);
+        return compute_dsd( tt_shr, mapped_support, rule );
       }
       else //shannon dec
       {
@@ -734,6 +669,9 @@ private:
         int index = find_unate_var(tt);
 
         auto res = do_shannon_dec(tt, index, co0, co1, mapped_support);
+
+        //it is not disjoint
+        gate_disjoint = false;
         
         //needed for PI checks
         int inv_var_co1 = is_inv_PI(co1, co1.num_vars());
@@ -750,7 +688,7 @@ private:
         if(inv_var_co1 < 0 && var_co1 < 0) //check if co1 is PI
         {
           min_base_shrink(co1, co1_shr);
-          res.fanin.insert(res.fanin.begin(), {0, compute_dsd(co1_shr, mapped_support, rule)});
+          res.fanin.insert(res.fanin.begin(), {0, compute_dsd(co1_shr, mapped_support, rule )});
         }
         else
         {
@@ -764,7 +702,7 @@ private:
         if(inv_var_co0 < 0 && var_co0 < 0) //check if co0 is PI
         {
           min_base_shrink(co0, co0_shr);
-          res.fanin.insert(res.fanin.begin(), {0, compute_dsd(co0_shr, mapped_support, rule)});
+          res.fanin.insert(res.fanin.begin(), {0, compute_dsd(co0_shr, mapped_support, rule )});
         }
         else
         {
@@ -1320,10 +1258,9 @@ dsd_node shannon_dec( const TT& tt, int index, TT* func0 = nullptr, TT* func1 = 
     return res;
 }
   std::vector<gate> const _gates; /* collection of gates */
-  std::vector<uint32_t> index_xors; /* XORs are problematic for structural matching, keep track of them*/
-  std::vector<uint32_t> id_xors; /* XORs are problematic for structural matching, keep track of them*/
   super_lib const& _supergates_spec; /* collection of supergates declarations */
   super_utils<NInputs> _super; /* supergates generation */
+  bool gate_disjoint = true; /* flag for gate support*/
   lib_t _super_lib; /* library of enumerated gates */
   lib_rule _dsd_map; /*hash map for dsd decomposition of gates*/
   lib_table _and_table; /*and table*/
