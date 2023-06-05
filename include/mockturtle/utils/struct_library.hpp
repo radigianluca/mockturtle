@@ -305,7 +305,7 @@ public:
     if(r.data == 3)
       r.data = 2;
     std::tuple<signal, signal> key;
-    if(l.index < r.index)
+    if(l.index <= r.index)
       key = std::make_tuple(l, r);
     else
       key = std::make_tuple(r, l);
@@ -1015,6 +1015,7 @@ private:
     }
     if(n.type == node_type::zero_)
       return {0,0};
+    int obs_pi = shift;
     uint32_t left_index = do_indexing_rule(r, r[n.fanin[0].index], max, sg_polarity, perm, shift).index;
     //polarity
     if(r[n.fanin[0].index].type == node_type::pi_)
@@ -1022,6 +1023,7 @@ private:
       sg_polarity |= ( n.fanin[0].inv << shift );
       shift++;
     }
+    int left_pi = shift - obs_pi;
     uint32_t right_index = do_indexing_rule(r, r[n.fanin[1].index], max, sg_polarity, perm, shift).index;
     //polarity
     if(r[n.fanin[1].index].type == node_type::pi_)
@@ -1029,6 +1031,7 @@ private:
       sg_polarity |= ( n.fanin[1].inv << shift );
       shift++;
     }
+    int right_pi = shift - obs_pi - left_pi;
 
     if(n.fanin[0].index == 0 && n.fanin[1].inv && n.index == r.size()-1) //it is an inverted function
     {
@@ -1051,7 +1054,37 @@ private:
     if(left.index <= right.index)
       t = std::make_tuple(left, right);
     else
+    {
+      //new polarity
+      uint32_t mask_l = 0;
+      uint32_t mask_r = 0;
+      uint32_t mask_obs = 0;
+      for(int i = 0; i < obs_pi; i++)
+      {
+        mask_obs |= (1 << i);
+      }
+      for(int i = obs_pi; i < obs_pi + left_pi; i++)
+      {
+        mask_l |= (1 << i);
+      }
+      for(int i = obs_pi + left_pi; i < obs_pi + left_pi + right_pi; i++)
+      {
+        mask_r |= (1 << i);
+      }
+      sg_polarity = ( ( sg_polarity & mask_l ) << right_pi) | ( ( sg_polarity & mask_r) >> left_pi) | ( sg_polarity & mask_obs );
+      //new permutation
+      std::vector copy ( perm );
+      for(int i = obs_pi; i < obs_pi + right_pi; i++)
+      {
+        perm[i] = copy[(i+left_pi)];
+      }
+      for(int i = right_pi + obs_pi; i < perm.size(); i++)
+      {
+        perm[i] = copy[(i-right_pi)];
+      }
+
       t = std::make_tuple(right, left);
+    }
     auto match = _and_table.find( t );
     if ( match != _and_table.end() )
       return {0, match -> second};

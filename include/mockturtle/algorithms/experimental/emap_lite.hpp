@@ -960,10 +960,6 @@ private:
     cut_t new_cut, bool_cut, struct_cut;
     std::vector<cut_t const*> vcuts( fanin );
 
-    //debug
-    std::cout << "Index " << index << "\n";
-    std::cout << "Children inv0 " << children_inv[0] << " children inv1 " << children_inv[1] << "\n";
-
     for ( auto const& c1 : *lcuts[0] )
     {
       for ( auto const& c2 : *lcuts[1] )

@@ -6,103 +6,184 @@
   {
     "entries": [
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c17",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.015580199658870697,
-        "size": 19
+        "area_after": 1212.9599850773811,
+        "benchmark": "adder",
+        "cec": true,
+        "delay_after": 1214.5300245285034,
+        "depth": 255,
+        "runtime": 0.11115679889917374,
+        "size": 1020
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c432",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.011259900406002998,
-        "size": 19
+        "area_after": 2731.2999477386475,
+        "benchmark": "bar",
+        "cec": true,
+        "delay_after": 80.75000095367432,
+        "depth": 12,
+        "runtime": 0.3143835961818695,
+        "size": 3336
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c499",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.012887299992144108,
-        "size": 19
+        "area_after": 49590.60903483629,
+        "benchmark": "div",
+        "cec": true,
+        "delay_after": 21013.900396347046,
+        "depth": 4372,
+        "runtime": 6.357313632965088,
+        "size": 57247
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c880",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.00932610034942627,
-        "size": 19
+        "area_after": 181599.81726402044,
+        "benchmark": "hyp",
+        "cec": true,
+        "delay_after": 95476.67057228088,
+        "depth": 24801,
+        "runtime": 33.76896667480469,
+        "size": 214335
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c1355",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.018554799258708954,
-        "size": 19
+        "area_after": 24525.29962450266,
+        "benchmark": "log2",
+        "cec": true,
+        "delay_after": 2118.9300203323364,
+        "depth": 444,
+        "runtime": 5.355870723724365,
+        "size": 32060
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c1908",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.010990999639034271,
-        "size": 19
+        "area_after": 2442.329960644245,
+        "benchmark": "max",
+        "cec": true,
+        "delay_after": 1271.1100063323975,
+        "depth": 287,
+        "runtime": 0.3593981862068176,
+        "size": 2865
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c2670",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.10523000359535217,
-        "size": 19
+        "area_after": 25016.629634916782,
+        "benchmark": "multiplier",
+        "cec": true,
+        "delay_after": 1320.6200189590454,
+        "depth": 274,
+        "runtime": 3.408310651779175,
+        "size": 27062
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c3540",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.023167500272393227,
-        "size": 19
+        "area_after": 5127.549922823906,
+        "benchmark": "sin",
+        "cec": true,
+        "delay_after": 982.2100048065186,
+        "depth": 225,
+        "runtime": 0.9524555802345276,
+        "size": 5416
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c5315",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.021195000037550926,
-        "size": 19
+        "area_after": 20514.7095643878,
+        "benchmark": "sqrt",
+        "cec": true,
+        "delay_after": 25229.1496219635,
+        "depth": 5058,
+        "runtime": 3.1895036697387695,
+        "size": 24618
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c6288",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.01314920000731945,
-        "size": 19
+        "area_after": 13937.24980634451,
+        "benchmark": "square",
+        "cec": true,
+        "delay_after": 1191.3600225448608,
+        "depth": 250,
+        "runtime": 2.298691511154175,
+        "size": 18484
       },
       {
-        "area_after": 30.34999966621399,
-        "benchmark": "c7552",
-        "cec": false,
-        "delay_after": 131.8400001525879,
-        "depth": 6,
-        "runtime": 0.0047311000525951385,
-        "size": 19
+        "area_after": 7626.209761083126,
+        "benchmark": "arbiter",
+        "cec": true,
+        "delay_after": 452.19000911712646,
+        "depth": 87,
+        "runtime": 3.43356990814209,
+        "size": 11839
+      },
+      {
+        "area_after": 455.7599923610687,
+        "benchmark": "cavlc",
+        "cec": true,
+        "delay_after": 93.17000102996826,
+        "depth": 16,
+        "runtime": 0.05344630032777786,
+        "size": 693
+      },
+      {
+        "area_after": 123.70999765396118,
+        "benchmark": "ctrl",
+        "cec": true,
+        "delay_after": 62.880001068115234,
+        "depth": 10,
+        "runtime": 0.006811200175434351,
+        "size": 174
+      },
+      {
+        "area_after": 320.75999504327774,
+        "benchmark": "dec",
+        "cec": true,
+        "delay_after": 28.93000030517578,
+        "depth": 3,
+        "runtime": 0.038360901176929474,
+        "size": 304
+      },
+      {
+        "area_after": 902.2699887156487,
+        "benchmark": "i2c",
+        "cec": true,
+        "delay_after": 98.52000045776367,
+        "depth": 20,
+        "runtime": 0.10572709888219833,
+        "size": 1342
+      },
+      {
+        "area_after": 151.34999829530716,
+        "benchmark": "int2float",
+        "cec": true,
+        "delay_after": 85.88000106811523,
+        "depth": 16,
+        "runtime": 0.0177737008780241,
+        "size": 260
+      },
+      {
+        "area_after": 30521.359600663185,
+        "benchmark": "mem_ctrl",
+        "cec": true,
+        "delay_after": 537.6300067901611,
+        "depth": 114,
+        "runtime": 6.156264781951904,
+        "size": 46836
+      },
+      {
+        "area_after": 1014.2499848008156,
+        "benchmark": "priority",
+        "cec": true,
+        "delay_after": 1186.530023574829,
+        "depth": 250,
+        "runtime": 0.0998041033744812,
+        "size": 978
+      },
+      {
+        "area_after": 222.50999695062637,
+        "benchmark": "router",
+        "cec": true,
+        "delay_after": 216.60999870300293,
+        "depth": 54,
+        "runtime": 0.028885699808597565,
+        "size": 257
+      },
+      {
+        "area_after": 20574.17964798212,
+        "benchmark": "voter",
+        "cec": true,
+        "delay_after": 390.2700004577637,
+        "depth": 70,
+        "runtime": 1.8038673400878906,
+        "size": 13758
       }
     ],
     "version": "5fe0e71"
