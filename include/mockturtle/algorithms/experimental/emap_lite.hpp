@@ -41,9 +41,8 @@
 #include <kitty/constructors.hpp>
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/hash.hpp>
-#include <kitty/static_truth_table.hpp>
 #include <kitty/npn.hpp>
-
+#include <kitty/static_truth_table.hpp>
 
 #include <fmt/format.h>
 #include <parallel_hashmap/phmap.h>
@@ -52,8 +51,8 @@
 #include "../../utils/cuts.hpp"
 #include "../../utils/node_map.hpp"
 #include "../../utils/stopwatch.hpp"
-#include "../../utils/tech_library.hpp"
 #include "../../utils/struct_library.hpp"
+#include "../../utils/tech_library.hpp"
 #include "../../views/binding_view.hpp"
 #include "../../views/choice_view.hpp"
 #include "../../views/depth_view.hpp"
@@ -225,7 +224,7 @@ public:
       _set_limit = other._set_limit;
 
       auto it = other.begin();
-      while( it != other.end() )
+      while ( it != other.end() )
       {
         **_pend++ = **it++;
         ++_pcend;
@@ -333,7 +332,7 @@ public:
       return true;
     if ( c1->flow > c2->flow + eps )
       return false;
-     if ( c1.size() < c2.size() )
+    if ( c1.size() < c2.size() )
       return true;
     if ( c1.size() > c2.size() )
       return false;
@@ -651,14 +650,13 @@ union multi_match_data
   };
 };
 
-//use StructCutSize as parameter
+// use StructCutSize as parameter
 template<class Ntk, unsigned CutSize, unsigned NInputs, unsigned NInputs_tech, classification_type Configuration>
 class emap_lite_impl
 {
 public:
   static constexpr float epsilon = 0.0005;
   static constexpr uint32_t max_cut_num = 32;
-  //change this (>6)
   static constexpr uint32_t max_cut_leaves = 9;
   static constexpr uint32_t StructSize = 6;
   static constexpr uint32_t BoolSize = 1;
@@ -670,13 +668,8 @@ public:
   using node_match_t = std::vector<node_match_emap_lite<NInputs>>;
   using klut_map = std::unordered_map<uint32_t, std::array<signal<klut_network>, 2>>;
   using TT = kitty::static_truth_table<CutSize>;
-  using cut_match_map = phmap::flat_hash_map<uint64_t, std::set<uint32_t>>;
 
 public:
-
-  int struc = 1;
-
-  //pass a struct library
   explicit emap_lite_impl( Ntk const& ntk, tech_library<NInputs_tech, Configuration> const& library, struct_library<NInputs>& struct_lib, emap_lite_params const& ps, emap_lite_stats& st )
       : ntk( ntk ),
         library( library ),
@@ -692,9 +685,9 @@ public:
     std::tie( lib_buf_area, lib_buf_delay, lib_buf_id ) = library.get_buffer_info();
     tmp_visited.reserve( 100 );
   }
-  //pass a sruct library
+  // pass a sruct library
 
-  explicit emap_lite_impl( Ntk const& ntk, tech_library<NInputs_tech, Configuration> const& library,  struct_library<NInputs>& struct_lib, std::vector<float> const& switch_activity, emap_lite_params const& ps, emap_lite_stats& st )
+  explicit emap_lite_impl( Ntk const& ntk, tech_library<NInputs_tech, Configuration> const& library, struct_library<NInputs>& struct_lib, std::vector<float> const& switch_activity, emap_lite_params const& ps, emap_lite_stats& st )
       : ntk( ntk ),
         library( library ),
         struct_lib( struct_lib ),
@@ -812,7 +805,7 @@ private:
         node_data.arrival[0] = 0.0f;
         /* PIs have the negative phase implemented with an inverter */
         node_data.arrival[1] = lib_inv_delay;
-        add_unit_cut( index );        
+        add_unit_cut( index );
         continue;
       }
 
@@ -862,72 +855,73 @@ private:
     return success;
   }
 
-  //returns found and table index (or -1 if none is found)
-  int try_struct_match( cut_t& c1, cut_t& c2, std::vector<uint32_t> children_inv, cut_t& new_cut )
+  /* returns found and table index (or -1 if none is found) */
+  int find_struct_match( cut_t& c1, cut_t& c2, std::vector<uint32_t> children_inv, cut_t& new_cut )
   {
-    //remember only 31 bits for index
+    // remember only 31 bits for index
     uint32_t neg0 = children_inv[0];
     uint32_t neg1 = children_inv[1];
-    uint32_t sig0 = neg0 | (c1->pattern_index << 1);
-    uint32_t sig1 = neg1 | (c2->pattern_index << 1);
+    uint32_t sig0 = neg0 | ( c1->pattern_index << 1 );
+    uint32_t sig1 = neg1 | ( c2->pattern_index << 1 );
     auto res = struct_lib.get_and_table_value( sig0, sig1 );
     return res;
   }
 
+  /* create new cut derived from structural matching */
   void create_struct_cut( cut_t& new_cut, cut_t* pc1, cut_t* pc2, int pat_ind, std::vector<uint32_t> children_inv, bool swap )
   {
-    new_cut.set_leaves( *pc1 ); //copy c1 in new cut
+    new_cut.set_leaves( *pc1 ); // copy c1 in new cut
     new_cut.add_leaves( pc2->begin(), pc2->end() );
     new_cut->pattern_index = pat_ind;
     uint16_t neg_l0, neg_r0, neg_l1, neg_r1;
-    if( (pc1->data()).pattern_index == 1 )
+    if ( ( pc1->data() ).pattern_index == 1 )
     {
       neg_l0 = children_inv[0];
       neg_l1 = neg_l0;
     }
     else
     {
-      neg_l0 = (pc1->data()).str_negations[0];
-      neg_l1 = (pc1->data()).str_negations[1];
+      neg_l0 = ( pc1->data() ).str_negations[0];
+      neg_l1 = ( pc1->data() ).str_negations[1];
     }
-    if( (pc2->data()).pattern_index == 1)
+    if ( ( pc2->data() ).pattern_index == 1 )
     {
       neg_r0 = children_inv[1];
       neg_r1 = neg_r0;
     }
     else
     {
-      neg_r0 = (pc2->data()).str_negations[0];
-      neg_r1 = (pc2->data()).str_negations[1];
+      neg_r0 = ( pc2->data() ).str_negations[0];
+      neg_r1 = ( pc2->data() ).str_negations[1];
     }
     uint16_t neg_0 = ( neg_l0 | ( neg_r0 << pc1->size() ) );
     uint16_t neg_1 = ( neg_l1 | ( neg_r1 << pc1->size() ) );
     new_cut->str_negations = { neg_0, neg_1 };
   }
 
-  bool do_struct_match( cut_t& new_cut, cut_t* c1, cut_t* c2, std::vector<uint32_t> children_inv )
+  /* tries to perform structural matching */
+  bool try_struct_match( cut_t& new_cut, cut_t* c1, cut_t* c2, std::vector<uint32_t> children_inv )
   {
-    cut_t *pc1 = c1;
-    cut_t *pc2 = c2;
+    cut_t* pc1 = c1;
+    cut_t* pc2 = c2;
     bool swap = false;
 
-    if( ( pc1->size() + pc2->size() ) > StructSize ) 
+    if ( ( pc1->size() + pc2->size() ) > StructSize )
       return false;
 
-    if( pc1->data().pattern_index == 0 || pc2->data().pattern_index == 0 ) 
+    if ( pc1->data().pattern_index == 0 || pc2->data().pattern_index == 0 )
       return false;
 
-    if ( (c1->data()).pattern_index > (c2->data()).pattern_index )
+    if ( ( c1->data() ).pattern_index > ( c2->data() ).pattern_index )
     {
       std::swap( pc1, pc2 );
       std::swap( children_inv[0], children_inv[1] );
       swap = true;
     }
 
-    int res = try_struct_match( *pc1, *pc2, children_inv, new_cut );
-    if( res >= 0 )
+    int res = find_struct_match( *pc1, *pc2, children_inv, new_cut );
+    if ( res >= 0 )
     {
-      //new cut generation 
       create_struct_cut( new_cut, pc1, pc2, res, children_inv, swap );
       return true;
     }
@@ -968,7 +962,7 @@ private:
         boolean = true;
         structural = false;
         /* do structural */
-        if ( struc && do_struct_match( struct_cut, c1, c2, children_inv ) )
+        if ( try_struct_match( struct_cut, c1, c2, children_inv ) )
         {
           structural = true;
         }
@@ -978,21 +972,21 @@ private:
           boolean = false;
         }
         /* no boolean and struct match found */
-        if(!boolean && !structural)
-            continue;
-        if(boolean)
+        if ( !boolean && !structural )
+          continue;
+        if ( boolean )
         {
           new_cut = bool_cut;
-          if(structural)
+          if ( structural )
           {
-            if( struct_cut.size() != bool_cut.size() )
+            if ( struct_cut.size() != bool_cut.size() )
               new_cut.data().pattern_index = 0;
             else
               new_cut.data().pattern_index = struct_cut.data().pattern_index;
             new_cut.data().str_negations = struct_cut.data().str_negations;
           }
           else
-            new_cut.data().pattern_index = 0;          
+            new_cut.data().pattern_index = 0;
         }
         else
         {
@@ -1006,9 +1000,8 @@ private:
         }
 
         /* compute function */
-        //check size of cut
-        if(boolean)
-        {        
+        if ( boolean )
+        {
           vcuts[0] = c1;
           vcuts[1] = c2;
           compute_truth_table( index, vcuts, new_cut );
@@ -1074,7 +1067,7 @@ private:
 
         if ( !vcuts[0]->merge( *vcuts[1], new_cut, CutSize ) )
         {
-            return true; /* continue */
+          return true; /* continue */
         }
 
         for ( i = 2; i < fanin; ++i )
@@ -1092,7 +1085,7 @@ private:
         }
 
         compute_truth_table( index, vcuts, new_cut );
-        
+
         /* match cut and compute data */
         compute_cut_data<DO_AREA>( new_cut, n );
 
@@ -1180,8 +1173,8 @@ private:
       /* try to drop one phase */
       match_drop_phase<DO_AREA, false>( n, 0 );
 
-      //assert( node_match[index].arrival[0] < node_match[index].required[0] + epsilon );
-      //assert( node_match[index].arrival[1] < node_match[index].required[1] + epsilon );
+      // assert( node_match[index].arrival[0] < node_match[index].required[0] + epsilon );
+      // assert( node_match[index].arrival[1] < node_match[index].required[1] + epsilon );
     }
 
     double area_old = area;
@@ -1405,7 +1398,7 @@ private:
         return false;
       }
 
-      if ( node_data.same_match || node_data.map_refs[use_phase] > 0 ) //maybe it is in here
+      if ( node_data.same_match || node_data.map_refs[use_phase] > 0 ) // maybe it is in here
       {
         if constexpr ( !ELA )
         {
@@ -2067,7 +2060,7 @@ private:
       count = switch_activity[ntk.node_to_index( n )];
     else
       count = node_data.area[phase];
-    
+
     /* don't touch box */
     /*if constexpr ( has_is_dont_touch_v<Ntk> )
     {
@@ -2149,7 +2142,7 @@ private:
       count = switch_activity[ntk.node_to_index( n )];
     else
       count = node_data.area[phase];
-    
+
     /* don't touch box */
     /*if constexpr ( has_is_dont_touch_v<Ntk> )
     {
@@ -2249,7 +2242,7 @@ private:
       count = switch_activity[ntk.node_to_index( n )];
     else
       count = node_data.area[phase];
-    
+
     /* don't touch box */
     /*if constexpr ( has_is_dont_touch_v<Ntk> )
     {
@@ -2540,15 +2533,15 @@ private:
       return;
     }
 
-    //do this only if cut is small, otherwise only structural
-    if( cut.size() <= BoolSize )
-    { //check with cut size not boolean
+    /* get gates boolean matching */
+    if ( cut.size() <= BoolSize )
+    {
       const auto tt = cut->function;
       kitty::static_truth_table<NInputs_tech> fe;
-      if(tt.num_vars() >= NInputs)
+      if ( tt.num_vars() >= NInputs )
         fe = kitty::shrink_to<NInputs>( tt );
       else
-        fe = kitty::extend_to<NInputs>( tt ); 
+        fe = kitty::extend_to<NInputs>( tt );
       auto fe_canon = fe;
 
       uint8_t negations_pos = 0;
@@ -2589,14 +2582,12 @@ private:
       }
     }
     else
-    {  
-      if(!struc)
-        return;
-      //get gates struct matching ask what to do for supergates and negations
+    {
+      /* get gates struct matching */
       uint32_t patt_ind = cut->pattern_index;
       const auto supergates_pos = struct_lib.get_pos_gates( patt_ind );
       const auto supergates_neg = struct_lib.get_neg_gates( patt_ind );
-      if ( supergates_pos != nullptr || supergates_neg != nullptr ) //maybe match on substructure
+      if ( supergates_pos != nullptr || supergates_neg != nullptr ) // maybe match on substructure
       {
         cut->supergates = { supergates_pos, supergates_neg };
       }
@@ -2607,7 +2598,6 @@ private:
         return;
       }
     }
-    //negation = c1.negation | c2.negation << c1.size() already done in merge_cuts2
 
     /* compute cut cost based on LUT area */
     best_arrival = 0;
@@ -2825,12 +2815,10 @@ private:
   emap_lite_params const& ps;
   emap_lite_stats& st;
 
-  uint32_t iteration{ 0 };  /* current mapping iteration */
-  double delay{ 0.0f };     /* current delay of the mapping */
-  double area{ 0.0f };      /* current area of the mapping */
-  uint32_t inv{ 0 };        /* current inverter count */
-
-  cut_match_map cut_matches; /* matches for each cut */
+  uint32_t iteration{ 0 }; /* current mapping iteration */
+  double delay{ 0.0f };    /* current delay of the mapping */
+  double area{ 0.0f };     /* current area of the mapping */
+  uint32_t inv{ 0 };       /* current inverter count */
 
   /* lib inverter info */
   float lib_inv_area;
@@ -2849,11 +2837,11 @@ private:
   std::vector<uint64_t> tmp_visited;
 
   /* cut computation */
-  std::vector<cut_set_t> cuts;                  /* compressed representation of cuts */
-  cut_merge_t lcuts;                            /* cut merger container */
-  truth_compute_t ltruth;                       /* truth table merger container */
-  support_t lsupport;                           /* support merger container */
-  uint32_t cuts_total{ 0 };                     /* current computed cuts */
+  std::vector<cut_set_t> cuts; /* compressed representation of cuts */
+  cut_merge_t lcuts;           /* cut merger container */
+  truth_compute_t ltruth;      /* truth table merger container */
+  support_t lsupport;          /* support merger container */
+  uint32_t cuts_total{ 0 };    /* current computed cuts */
 };
 
 } /* namespace detail */
@@ -2884,7 +2872,7 @@ private:
  *
  */
 template<class Ntk, unsigned CutSize = 5u, unsigned NInputs, unsigned NInputs_tech, classification_type Configuration>
-//pass a struct library.
+// pass a struct library.
 binding_view<klut_network> emap_lite( Ntk const& ntk, tech_library<NInputs_tech, Configuration> const& library, struct_library<NInputs>& struct_lib, emap_lite_params const& ps = {}, emap_lite_stats* pst = nullptr )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );

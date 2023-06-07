@@ -30,20 +30,20 @@
 #include <lorina/aiger.hpp>
 #include <lorina/genlib.hpp>
 #include <lorina/verilog.hpp>
-#include <mockturtle/algorithms/experimental/emap_lite.hpp>
 #include <mockturtle/algorithms/aig_balancing.hpp>
+#include <mockturtle/algorithms/experimental/emap_lite.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/io/genlib_reader.hpp>
+#include <mockturtle/io/verilog_reader.hpp>
+#include <mockturtle/io/write_aiger.hpp>
+#include <mockturtle/io/write_dot.hpp>
+#include <mockturtle/io/write_verilog.hpp>
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/networks/klut.hpp>
-#include <mockturtle/utils/tech_library.hpp>
 #include <mockturtle/utils/struct_library.hpp>
+#include <mockturtle/utils/tech_library.hpp>
 #include <mockturtle/views/binding_view.hpp>
 #include <mockturtle/views/depth_view.hpp>
-#include <mockturtle/io/write_verilog.hpp>
-#include <mockturtle/io/write_dot.hpp>
-#include <mockturtle/io/write_aiger.hpp>
-#include <mockturtle/io/verilog_reader.hpp>
 
 #include <experiments.hpp>
 
@@ -82,72 +82,49 @@ std::string res_full_name = "result.v";
 std::string dot_aig_full_name = "aig.dot";
 std::string dot_res_full_name = "result.dot";
 
-
-
-
 int main()
 {
-  
+
   experiment<std::string, uint32_t, double, uint32_t, double, float, bool> exp(
       "emap", "benchmark", "size", "area_after", "depth", "delay_after", "runtime", "cec" );
 
-  fmt::print( "[i] processing technology library\n" );
-
   /* library to map to technology */
   std::vector<gate> gates;
-  std::ifstream in( "/home/radi/RA/mockturtle/asap_smp.genlib" ); //library or9
-  //std::stringstream in ( mcnc_library );
+  std::ifstream in( "/home/radi/RA/mockturtle/asap_smp.genlib" );
 
   if ( lorina::read_genlib( in, genlib_reader( gates ) ) != lorina::return_code::success )
   {
     return 1;
   }
 
-   //compute struct library
-  struct_library<6> str_lib( gates, {}, 1 );
+  /* compute struct library */
+  struct_library<6> str_lib( gates );
 
   tech_library_params tps;
-  tps.verbose = true;
   tech_library<6, classification_type::np_configurations> tech_lib( gates, tps );
 
-  for ( auto const& benchmark : epfl_benchmarks( ) ) //iscas_benchmarks() //or 2nd epfl benchmarks // experiments::bar
+  for ( auto const& benchmark : iscas_benchmarks() )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
     aig_network aig;
 
-    if ( lorina::read_aiger( benchmark_path(benchmark), aiger_reader( aig ) ) != lorina::return_code::success )
-     continue;
+    /* read benchmark */
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) ) != lorina::return_code::success )
+      continue;
 
-    /*if ( lorina::read_verilog( bench_full_name + ".v", verilog_reader( aig ) ) != lorina::return_code::success )
-      continue;*/
-    
-    //verification format
-    write_aiger(aig, bench_full_name + ".aig" );
-
-    //aig_balance( aig );
-
-    write_dot(aig, dot_aig_full_name);
-
-    write_verilog(aig, "aig_balanced.v");
+    aig_balance( aig );
 
     const uint32_t size_before = aig.num_gates();
     const uint32_t depth_before = depth_view( aig ).depth();
 
     emap_lite_params ps;
-    ps.verbose = true;
     emap_lite_stats st;
 
-    //cut size = 6 and Ninputs = 6
+    /* do mapping, cut size = 6 and Ninputs = 6 */
     binding_view<klut_network> res = emap_lite<aig_network, 6, 6>( aig, tech_lib, str_lib, ps, &st );
 
     res.report_gates_usage();
-
-    write_verilog_with_binding(res, res_full_name);
-
-    write_dot(res, dot_res_full_name);
-
-    //bool const cec = benchmark != "hyp" ? abc_cec( res, bench_name ) : true;
 
     bool const cec = benchmark != "hyp" ? abc_cec( res, benchmark ) : true;
 
