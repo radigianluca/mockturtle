@@ -55,9 +55,7 @@ int main()
     resubstitution_stats st;
 
     // ps.pattern_filename = "1024sa1/" + benchmark + ".pat";
-    ps.max_inserts = 20;
-    ps.max_pis = 8;
-    ps.max_divisors = std::numeric_limits<uint32_t>::max();
+    ps.max_inserts = 1;
 
     const uint32_t size_before = aig.num_gates();
     sim_resubstitution( aig, ps, &st );

@@ -259,7 +259,6 @@ private:
     {
       cut->func_id = 0;
     }
-    cut->pattern_index = 0;
   }
 
   void add_unit_cut( uint32_t index )
@@ -270,13 +269,6 @@ private:
     {
       cut->func_id = 2;
     }
-    cut->pattern_index = 1;
-  }
-
-  void add_new_cut( uint32_t index, uint32_t leaves_beg, uint32_t leaves_end, uint32_t pat_index )
-  {
-    auto& cut = _cuts[index].add_cut( &leaves_beg, &leaves_end );
-    cut->pattern_index = pat_index;
   }
 
 private:
@@ -328,7 +320,7 @@ public:
       {
         cuts.add_zero_cut( index );
       }
-      else if ( ntk.is_ci( node ) )
+      else if ( ntk.is_pi( node ) )
       {
         cuts.add_unit_cut( index );
       }
@@ -562,7 +554,7 @@ private:
  * Unit cuts do not participate in the sorting and are always added to the end
  * of each cut set.
  *
- * The algorithm can be configured by specifying the template argument `CutData`
+ * The algorithm can be configured by speciying the template argument `CutData`
  * which holds the application specific data assigned to each cut.  Examples
  * on how to specify custom cost functions for sorting cuts based on the
  * application specific cut data can be found in the files contained in the
@@ -570,7 +562,7 @@ private:
  *
  * **Required network functions:**
  * - `is_constant`
- * - `is_ci`
+ * - `is_pi`
  * - `size`
  * - `get_node`
  * - `node_to_index`
@@ -597,7 +589,7 @@ network_cuts<Ntk, ComputeTruth, CutData> cut_enumeration( Ntk const& ntk, cut_en
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_is_constant_v<Ntk>, "Ntk does not implement the is_constant method" );
-  static_assert( has_is_ci_v<Ntk>, "Ntk does not implement the is_ci method" );
+  static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
   static_assert( has_size_v<Ntk>, "Ntk does not implement the size method" );
   static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
   static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
@@ -811,7 +803,7 @@ public:
       {
         cuts.add_zero_cut( index );
       }
-      else if ( ntk.is_ci( node ) )
+      else if ( ntk.is_pi( node ) )
       {
         cuts.add_unit_cut( index );
       }
@@ -1049,7 +1041,7 @@ private:
  * Unit cuts do not participate in the sorting and are always added to the end
  * of each cut set.
  *
- * The algorithm can be configured by specifying the template argument `CutData`
+ * The algorithm can be configured by speciying the template argument `CutData`
  * which holds the application specific data assigned to each cut.  Examples
  * on how to specify custom cost functions for sorting cuts based on the
  * application specific cut data can be found in the files contained in the
@@ -1057,7 +1049,7 @@ private:
  *
  * **Required network functions:**
  * - `is_constant`
- * - `is_ci`
+ * - `is_pi`
  * - `size`
  * - `get_node`
  * - `node_to_index`
@@ -1084,7 +1076,7 @@ fast_network_cuts<Ntk, NumVars, ComputeTruth, CutData> fast_cut_enumeration( Ntk
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_is_constant_v<Ntk>, "Ntk does not implement the is_constant method" );
-  static_assert( has_is_ci_v<Ntk>, "Ntk does not implement the is_ci method" );
+  static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
   static_assert( has_size_v<Ntk>, "Ntk does not implement the size method" );
   static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
   static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
@@ -1136,7 +1128,7 @@ fast_network_cuts<Ntk, NumVars, ComputeTruth, CutData> fast_cut_enumeration( Ntk
  * - `fanin_size`
  * - `foreach_fanin`
  * - `foreach_gate`
- * - `foreach_ci`
+ * - `foreach_pi`
  * - `get_node`
  * - `node_to_index`
  * - `size`
@@ -1167,7 +1159,7 @@ fast_small_cut_enumeration( Ntk const& ntk, const uint8_t cut_size = 4 )
   // static_assert( is_topologically_sorted_v<Ntk>, "Ntk is not a topologically-sorted network" );
   static_assert( has_size_v<Ntk>, "Ntk does not implement the size method" );
   static_assert( has_node_to_index_v<Ntk>, "Ntk does not implement the node_to_index method" );
-  static_assert( has_foreach_ci_v<Ntk>, "Ntk does not implement the foreach_ci method" );
+  static_assert( has_foreach_pi_v<Ntk>, "Ntk does not implement the foreach_pi method" );
   static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
 
   // Max 64 nodes, so 8 bits are enough for indices.
@@ -1338,7 +1330,7 @@ fast_small_cut_enumeration( Ntk const& ntk, const uint8_t cut_size = 4 )
   //////////////////////////////////////////////////////////////////////////////
 
   // Primary inputs only have themselves as their cut-set.
-  ntk.foreach_ci(
+  ntk.foreach_pi(
       [&]( auto node ) {
         auto const idx = ntk.node_to_index( node );
         cut_sets.at( idx ) = { set_bit( idx ) };

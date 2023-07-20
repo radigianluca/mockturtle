@@ -1,10 +1,41 @@
+/* mockturtle: C++ logic network library
+ * Copyright (C) 2018-2023  EPFL
+ *
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/*!
+  \file struct_library.hpp
+  \brief Implements utilities for structural matching
+
+  \author Alessandro Tempia Calvino
+  \author Gianluca Radi
+*/
 
 #pragma once
 
 #include <algorithm>
 #include <cassert>
 #include <numeric>
-#include <set>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
@@ -20,6 +51,7 @@
 
 #include "../io/genlib_reader.hpp"
 #include "../io/super_reader.hpp"
+#include "include/supergate.hpp"
 #include "super_utils.hpp"
 #include "tech_library.hpp"
 
@@ -31,9 +63,9 @@ namespace mockturtle
  * This class creates a technology library from a set
  * of input gates.
  *
- * The gates' functions are decomposed and the derived rules are turned into aig format.
- * Then, every rule and subrule gets a unique id and the and_table is built.
- * Every gate gets a unique label comprenshive of its rule id and whether it is positive or negative.
+ * Gates are processed to derive rules in the AIG format.
+ * Then, every rule and subrule gets a unique id and the AND table is built.
+ * Every gate gets a unique label comprehensive of its rule id and whether it is positive or negative.
  *
  * The template parameter `NInputs` selects the maximum number of variables
  * allowed for a gate in the library.
@@ -52,10 +84,10 @@ namespace mockturtle
    \endverbatim
  */
 
-template<unsigned NInputs = 6u>
+template<unsigned NInputs = 9u>
 class struct_library
 {
-
+public:
   enum class node_type
   {
     none,
@@ -131,144 +163,60 @@ class struct_library
     }
   };
 
-  struct label_hash
-  {
-    std::size_t operator()( label const& l ) const noexcept
-    {
-      return std::hash<uint32_t>{}( l.data );
-    }
-  };
-
+private:
   using supergates_list_t = std::vector<supergate<NInputs>>;
-  using tt_hash = kitty::hash<kitty::static_truth_table<NInputs>>;
-  using lib_t = phmap::flat_hash_map<kitty::static_truth_table<NInputs>, supergates_list_t, tt_hash>;
+  using composed_list_t = std::vector<composed_gate<NInputs>>;
   using lib_rule = phmap::flat_hash_map<kitty::dynamic_truth_table, std::vector<dsd_node>, kitty::hash<kitty::dynamic_truth_table>>;
   using rule = std::vector<dsd_node>;
   using lib_table = phmap::flat_hash_map<std::tuple<signal, signal>, uint32_t, tuple_s_hash>;
-  using map_label_gate = std::unordered_map<label, supergates_list_t, label_hash>;
+  using map_label_gate = std::unordered_map<uint32_t, supergates_list_t>;
 
 public:
-  std::string to_string( node_type t )
-  {
-    if ( t == node_type::and_ )
-      return "*";
-    if ( t == node_type::or_ )
-      return "+";
-    if ( t == node_type::mux_ )
-      return "+";
-    if ( t == node_type::xor_ )
-      return "xor";
-    if ( t == node_type::pi_ )
-      return "pi";
-    if ( t == node_type::none )
-      return "none";
-    if ( t == node_type::zero_ )
-      return "zero";
-  }
+  explicit struct_library( std::vector<gate> const& gates )
+      : _gates( gates ),
+        _supergates(),
+        _dsd_map(),
+        _and_table(),
+        _label_to_gate()
+  {}
 
-  /*! \brief Get depth of rule starting from a specific dsd_node.
+public:
+  /*! \brief Construct the structural library.
    *
-   *  \param rule rule
-   *  \param n dsd_node to start from
-   * Returns depth of rule starting from n.
+   * Generates the patterns for structural matching.
+   * Variable `min_vars` defines the minimum number of
+   * gate inputs considered for the library creation.
+   * 0 < min_vars < UINT32_MAX
    */
-  uint32_t get_depth( rule rule, dsd_node n )
+  void construct( uint32_t min_vars = 2u, bool verbose = false, bool very_verbose = false )
   {
-    if ( n.type == node_type::pi_ || n.type == node_type::zero_ )
-    {
-      return 0;
-    }
-    uint32_t max_depth;
-    uint32_t left_depth = get_depth( rule, rule[n.fanin[0].index] );
-    uint32_t right_depth = get_depth( rule, rule[n.fanin[1].index] );
-    max_depth = ( left_depth > right_depth ) ? left_depth : right_depth;
-    return max_depth + 1;
+    generate_library( min_vars, verbose, very_verbose );
   }
 
-  void print_dsd_node( dsd_node& n )
-  {
-    std::cout << n.index << " " << to_string( n.type ) << " ";
-    for ( auto elem : n.fanin )
-      std::cout << "{" << elem.index << ", " << elem.inv << "}";
-    std::cout << "\n";
-  }
-
-  void print_rule( rule& r )
-  {
-    for ( auto elem : r )
-      print_dsd_node( elem );
-  }
-
-  /*! \brief Print expression of a rule.
+  /*! \brief Construct the structural library.
    *
-   *  \param rule rule.
-   *  \param n dsd_node to start from.
+   * Generates the patterns for structural matching.
    */
-  void print_rule( rule rule, dsd_node n )
+  const map_label_gate& get_struct_library() const
   {
-    if ( n.type == node_type::pi_ )
-    {
-      std::cout << char( 'a' + n.index );
-      return;
-    }
-    if ( n.type == node_type::zero_ )
-    {
-      std::cout << "0";
-      return;
-    }
-    else
-    {
-      std::cout << "(";
-      if ( n.fanin[0].inv )
-      {
-        std::cout << "!";
-      }
-      if ( n.type == node_type::mux_ )
-      {
-        std::cout << "!" << char( 'a' + n.fanin[2].index ) << " * ";
-      }
-      print_rule( rule, rule[n.fanin[0].index] );
-      std::cout << " " << to_string( n.type ) << " ";
-      if ( n.type == node_type::mux_ )
-      {
-        std::cout << char( 'a' + n.fanin[2].index ) << " * ";
-      }
-      if ( n.fanin[1].inv )
-      {
-        std::cout << "!";
-      }
-      print_rule( rule, rule[n.fanin[1].index] );
-      std::cout << ")";
-    }
+    return _label_to_gate;
   }
 
-  /*! \brief Get the rules matching the function.
+  /*! \brief Get the pattern ID.
    *
-   * Returns a list of gates that match the function represented
-   * by the truth table.
+   *  \param id1 first pattern id.
+   *  \param id2 second pattern id.
+   * Returns a pattern ID if found, UINT32_MAX otherwise given the
+   * children IDs. This function works with only AND operators.
    */
-  rule get_rules( kitty::dynamic_truth_table const& tt )
-  {
-    auto match = _dsd_map.find( tt );
-    if ( match != _dsd_map.end() )
-      return match->second;
-    return {};
-  }
-
-  /*! \brief Get value of and table associated to two indexes.
-   *
-   *  \param t1 first index.
-   *  \param t2 second index.
-   * Returns value of and table if found, -1 otherwise.
-   */
-  const int get_and_table_value( uint32_t t1, uint32_t t2 ) const
+  const uint32_t get_pattern_id( uint32_t id1, uint32_t id2 ) const
   {
     signal l, r;
-    l.data = t1;
+    l.data = id1;
     /* ignore input negations */
     if ( l.data == 3 )
       l.data = 2;
-    r.data = t2;
+    r.data = id2;
     if ( r.data == 3 )
       r.data = 2;
     std::tuple<signal, signal> key;
@@ -279,7 +227,21 @@ public:
     auto match = _and_table.find( key );
     if ( match != _and_table.end() )
       return match->second;
-    return -1;
+    return UINT32_MAX;
+  }
+
+  /*! \brief Get the gates matching the pattern ID.
+   *
+   * Returns a list of gates that match the pattern ID.
+   */
+  const supergates_list_t* get_supergates_pattern( uint32_t id, bool phase ) const
+  {
+    auto match = _label_to_gate.find( ( id << 1 ) | ( phase ? 1 : 0 ) );
+    if ( match != _label_to_gate.end() )
+    {
+      return &( match->second );
+    }
+    return nullptr;
   }
 
   /*! \brief Print and table.
@@ -297,166 +259,300 @@ public:
     }
   }
 
-  /*! \brief Get all positive gates associated to an index.
-   *
-   *  \param index index.
-   * Returns pointer to lists of all positive gates associated to index.
-   */
-  const supergates_list_t* get_pos_gates( uint32_t index ) const
-  {
-    auto match = _label_to_gate.find( { 0, index } );
-    if ( match != _label_to_gate.end() )
-    {
-      return &( match->second );
-    }
-    return nullptr;
-  }
-
-  /*! \brief Get all negative gates associated to an index.
-   *
-   *  \param index index.
-   * Returns pointer to lists of all negative gates associated to index.
-   */
-  const supergates_list_t* get_neg_gates( uint32_t index ) const
-  {
-    auto match = _label_to_gate.find( { 1, index } );
-    if ( match != _label_to_gate.end() )
-    {
-      return &( match->second );
-    }
-    return nullptr;
-  }
-
-  explicit struct_library( std::vector<gate> const& gates, super_lib const& supergates_spec = {}, uint8_t verbose = 0 )
-      : _gates( gates ),
-        _supergates_spec( supergates_spec ),
-        _super( _gates, _supergates_spec ),
-        _super_lib(),
-        _dsd_map()
-  {
-    generate_library( verbose );
-  }
-
 private:
-  void generate_library( uint8_t verbose )
+  void generate_library( uint32_t min_vars, bool verbose = false, bool very_verbose = false )
   {
-    auto const& supergates = _super.get_super_library(); // make sure it does not make copy
-    std::vector<uint32_t> indexes( supergates.size() );
+    /* select and load gates */
+    _supergates.reserve( _gates.size() );
+    generate_composed_gates();
+
+    /* mark dominate gates */
+    std::vector<bool> skip_gates( _supergates.size(), false );
+    // select_dominated_gates( skip_gates );
+
+    std::vector<uint32_t> indexes( _supergates.size() );
     std::iota( indexes.begin(), indexes.end(), 0 );
-    uint32_t const standard_gate_size = _super.get_standard_library_size();
     uint32_t max_label = 1;
     uint32_t gate_pol = 0; // polarity of AND equivalent gate
     uint32_t shift = 0;
 
-    // sort increasing order of area
-    sort( indexes.begin(), indexes.end(),
-          [&]( auto const& a, auto const& b ) -> bool {
-            return supergates[a].area < supergates[b].area;
-          } );
-    for ( auto const& ind : indexes )
+    std::cout << "[i] processing structural library\n";
+    if ( verbose )
+      std::cout << "[i] structural library: processing " << _supergates.size() << " gates with minum size " << min_vars << " and max size " << NInputs << "\n";
+
+    /* sort cells by increasing order of area */
+    std::sort( indexes.begin(), indexes.end(),
+               [&]( auto const& a, auto const& b ) -> bool {
+                 return _supergates[a].area < _supergates[b].area;
+               } );
+
+    for ( uint32_t const ind : indexes )
     {
-      auto const& gate = supergates[ind];
-      if ( gate.num_vars > 1 )
+      composed_gate<NInputs> const& gate = _supergates[ind];
+
+      if ( gate.num_vars < 2 || skip_gates[ind] )
+        continue;
+
+      /* DSD decomposition */
+      rule rule = {};
+      std::vector<int> support = {};
+      for ( int i = 0; i < gate.num_vars; i++ )
       {
-        /* DSD decomposition */
-        rule rule = {};
-        std::vector<int> support = {};
-        for ( int i = 0; i < gate.num_vars; i++ )
+        rule.push_back( { node_type::pi_, i, {} } );
+        support.push_back( i );
+      }
+      auto cpy = gate.function;
+      gate_disjoint = false;
+      compute_dsd( cpy, support, rule );
+
+      if ( gate_disjoint )
+        continue;
+
+      _dsd_map.insert( { gate.function, rule } );
+      if ( very_verbose )
+      {
+        std::cout << gate.root->name << "\n";
+        std::cout << "Dsd:\n";
+        print_rule( rule, rule[rule.size() - 1] );
+      }
+
+      /* Aig conversion */
+      auto aig_rule = map_to_aig( rule );
+      if ( very_verbose )
+      {
+        std::cout << "\nAig:\n";
+        print_rule( aig_rule, aig_rule[aig_rule.size() - 1] );
+      }
+
+      /* Rules derivation */
+      std::vector<std::vector<dsd_node>> der_rules = {};
+      der_rules.push_back( aig_rule );
+      std::vector<std::tuple<uint32_t, uint32_t>> depths = { { get_depth( aig_rule, aig_rule[aig_rule[aig_rule.size() - 1].fanin[0].index] ), get_depth( aig_rule, aig_rule[aig_rule[aig_rule.size() - 1].fanin[1].index] ) } };
+      create_rules_from_dsd( der_rules, aig_rule, aig_rule[aig_rule.size() - 1], depths, true, true );
+
+      /*std::vector<std::vector<dsd_node>> perm_rules = {};
+      for( auto r : der_rules )
+      {
+        std::vector<uint32_t> variables = {};
+        std::vector<uint32_t> variables_vis = {};
+        std::vector<uint32_t> visited = {};
+        uint32_t start_index = r.size()-1;
+        std::vector<std::vector<uint32_t>> permut = {};
+
+        while( variables_vis.size() < gate.num_vars )
         {
-          rule.push_back( { node_type::pi_, i, {} } );
-          support.push_back( i );
-        }
-        auto cpy = gate.function;
-        compute_dsd( cpy, support, rule );
+          variables.clear();
 
-        /* ignore gates with reconvergence */
-        if ( !gate_disjoint )
-        {
-          gate_disjoint = true;
-          continue;
-        }
+          find_batch( r, r[start_index], visited, variables );
 
-        _dsd_map.insert( { gate.function, rule } );
-        if ( verbose )
-        {
-          std::cout << "Dsd:\n";
-          print_rule( rule, rule[rule.size() - 1] );
-        }
+          //debug
+          std::cout << "visited\n";
+          for(auto elem : visited)
+            std::cout << elem << "\t";
 
-        /* Aig conversion */
-        auto aig_rule = map_to_aig( rule );
-        if ( verbose )
-        {
-          std::cout << "\nAig:\n";
-          print_rule( aig_rule, aig_rule[aig_rule.size() - 1] );
-        }
+          for(auto elem : variables)
+            variables_vis.push_back(elem);
 
-        /* Rules derivation */
-        std::vector<std::vector<dsd_node>> der_rules = {};
-        der_rules.push_back( aig_rule );
-        std::vector<std::tuple<uint32_t, uint32_t>> depths = { { get_depth( aig_rule, aig_rule[aig_rule[aig_rule.size() - 1].fanin[0].index] ), get_depth( aig_rule, aig_rule[aig_rule[aig_rule.size() - 1].fanin[1].index] ) } };
-        create_rules_from_dsd( der_rules, aig_rule, aig_rule[aig_rule.size() - 1], depths, true, true );
-        if ( verbose )
-        {
-          std::cout << "\nDerived:\n";
-        }
-
-        /* Indexing of rules and subrules, and_table construction, and gates' label assignement */
-        for ( auto elem : der_rules )
-        {
-          gate_pol = 0;
-          shift = 0;
-          std::vector<uint8_t> perm( gate.num_vars );
-          auto index_rule = do_indexing_rule( elem, elem[elem.size() - 1], max_label, gate_pol, perm, shift );
-
-          supergate<NInputs> sg = { &gate,
-                                    static_cast<float>( gate.area ),
-                                    gate.tdelay,
-                                    perm,
-                                    gate_pol };
-
-          auto& v = _label_to_gate[index_rule];
-
-          auto it = std::lower_bound( v.begin(), v.end(), sg, [&]( auto const& s1, auto const& s2 ) {
-            if ( s1.area < s2.area )
-              return true;
-            if ( s1.area > s2.area )
-              return false;
-            if ( s1.root->num_vars < s2.root->num_vars )
-              return true;
-            if ( s1.root->num_vars > s2.root->num_vars )
-              return true;
-            return s1.root->id < s2.root->id;
-          } );
-
-          v.insert( it, sg );
-
-          if ( verbose )
+          if(variables.size() == 0)
           {
-            print_rule( elem, elem[elem.size() - 1] );
-            std::cout << "\n";
-            for ( const std::pair<label, supergates_list_t>& elem : _label_to_gate )
-            {
-              std::cout << elem.first.data << "\n";
-              for ( auto sg : elem.second )
-              {
-                std::cout << ( sg.root )->root->expression << "\n";
-              }
-            }
+            start_index = find_start_index( r, r.size()-1, visited );
+            continue;
           }
+
+          permut = permute(variables);
+
+          //first permutation already observed
+          permut.erase(permut.begin());
+
+           //debug
+          std::cout << "perms\n";
+          for(auto vec : permut)
+          {
+            for(auto elem : vec)
+              std::cout << elem << "\t";
+            std::cout << "\n";
+          }
+
+          if(permut.size() > 0)
+            apply_perm(perm_rules, r, permut, variables);
+
+          start_index = find_start_index( r, r.size()-1, visited );
+        }
+      }
+
+      for( auto& rule : perm_rules )
+      {
+        der_rules.push_back(rule);
+      }
+
+      if ( very_verbose )
+      {
+        std::cout << "\nDerived:\n";
+      }*/
+
+      /* Indexing of rules and subrules, and_table construction, and gates' label assignement */
+      for ( auto elem : der_rules )
+      {
+        gate_pol = 0;
+        shift = 0;
+        std::vector<uint8_t> perm( gate.num_vars );
+        auto index_rule = do_indexing_rule( elem, elem[elem.size() - 1], max_label, gate_pol, perm, shift );
+
+        /* skip gate creation for small gates (<`min_vars` inputs) and convergence */
+        if ( gate.num_vars < min_vars )
+        {
+          continue;
+          if ( very_verbose )
+            std::cout << "[i] skip gate due to variable convergence\n";
         }
 
-        if ( verbose )
+        // std::cout << mask_k << " " << mask_k1 << "\n";
+        // std::cout << ((((gate_pol & ~(1 << k) ) & ~(1 << (k+1))) | (mask_k << 1)) | (mask_k1 >> 1)) << "\n";
+
+        supergate<NInputs> sg = { &gate,
+                                  static_cast<float>( gate.area ),
+                                  gate.tdelay,
+                                  perm,
+                                  //((((gate_pol & ~(1 << k) ) & ~(1 << (k+1))) | (mask_k << 1)) | (mask_k1 >> 1)) };
+                                  gate_pol };
+
+        // std::cout << "Expression " << gate.root->expression << "\n";
+        // std::cout << "polarity " << sg.polarity << "\n";
+
+        for ( auto i = 0u; i < perm.size() && i < NInputs; ++i )
         {
-          std::cout << "\n";
-          std::cout << "And table:\n";
-          print_and_table();
-          std::cout << "\n";
+          sg.tdelay[i] = gate.tdelay[sg.permutation[i]];
+          // std::cout << "perm " << (uint32_t) sg.permutation[i] << "\t";
+        }
+        // std::cout << "\n";
+
+        auto& v = _label_to_gate[index_rule.data];
+
+        auto it = std::lower_bound( v.begin(), v.end(), sg, [&]( auto const& s1, auto const& s2 ) {
+          if ( s1.area < s2.area )
+            return true;
+          if ( s1.area > s2.area )
+            return false;
+          if ( s1.root->num_vars < s2.root->num_vars )
+            return true;
+          if ( s1.root->num_vars > s2.root->num_vars )
+            return true;
+          return s1.root->id < s2.root->id;
+        } );
+
+        v.insert( it, sg );
+
+        if ( very_verbose )
+        {
+          print_rule( elem, elem[elem.size() - 1] );
+          std::cout << "\n\n";
         }
       }
     }
-    if ( verbose )
+    if ( very_verbose )
       std::cout << "\n";
+  }
+
+  void generate_composed_gates()
+  {
+    /* filter multi-output gates */
+    std::unordered_map<std::string, uint32_t> multioutput_map;
+    multioutput_map.reserve( _gates.size() );
+
+    for ( const auto& g : _gates )
+    {
+      if ( multioutput_map.find( g.name ) != multioutput_map.end() )
+      {
+        multioutput_map[g.name] += 1;
+      }
+      else
+      {
+        multioutput_map[g.name] = 1;
+      }
+    }
+
+    /* create composed gates */
+    uint32_t ignored = 0;
+    for ( const auto& g : _gates )
+    {
+      std::array<float, NInputs> pin_to_pin_delays{};
+
+      /* filter large gates and multi-output gates */
+      if ( g.function.num_vars() > NInputs || multioutput_map[g.name] > 1 )
+      {
+        ++ignored;
+        continue;
+      }
+
+      auto i = 0u;
+      for ( auto const& pin : g.pins )
+      {
+        /* use worst pin delay */
+        pin_to_pin_delays[i++] = std::max( pin.rise_block_delay, pin.fall_block_delay );
+      }
+
+      _supergates.emplace_back( composed_gate<NInputs>{ static_cast<unsigned int>( _supergates.size() ),
+                                                        false,
+                                                        &g,
+                                                        g.num_vars,
+                                                        g.function,
+                                                        g.area,
+                                                        pin_to_pin_delays,
+                                                        {} } );
+    }
+  }
+
+  void select_dominated_gates( std::vector<bool>& skip_gates )
+  {
+    for ( uint32_t i = 0; i < skip_gates.size() - 1; ++i )
+    {
+      if ( _supergates[i].root == nullptr )
+        continue;
+
+      if ( skip_gates[i] )
+        continue;
+
+      auto const& tti = _supergates[i].function;
+      for ( uint32_t j = i + 1; j < skip_gates.size(); ++j )
+      {
+        auto const& ttj = _supergates[j].function;
+
+        /* get the same functionality */
+        if ( tti != ttj )
+          continue;
+
+        /* is i smaller than j */
+        bool smaller = _supergates[i].area < _supergates[j].area;
+
+        /* is i faster for every pin */
+        bool faster = true;
+        for ( uint32_t k = 0; k < tti.num_vars(); ++k )
+        {
+          if ( _supergates[i].tdelay[k] > _supergates[j].tdelay[k] )
+            faster = false;
+        }
+
+        if ( smaller && faster )
+        {
+          skip_gates[j] = true;
+          continue;
+        }
+
+        /* is j faster for every pin */
+        faster = true;
+        for ( uint32_t k = 0; k < tti.num_vars(); ++k )
+        {
+          if ( _supergates[j].tdelay[k] > _supergates[i].tdelay[k] )
+            faster = false;
+        }
+
+        if ( !smaller && faster )
+        {
+          skip_gates[i] = true;
+          break;
+        }
+      }
+    }
   }
 
   int try_top_dec( kitty::dynamic_truth_table& tt, int num_vars )
@@ -677,7 +773,7 @@ private:
         auto res = do_shannon_dec( tt, index, co0, co1, mapped_support );
 
         /* check for reconvergence */
-        gate_disjoint = false;
+        gate_disjoint = true;
 
         int inv_var_co1 = is_inv_PI( co1, co1.num_vars() );
         int map_inv_var_co1 = mapped_support[inv_var_co1];
@@ -723,6 +819,14 @@ private:
         return res.index;
       }
     }
+  }
+
+  rule get_rules( kitty::dynamic_truth_table const& tt )
+  {
+    auto match = _dsd_map.find( tt );
+    if ( match != _dsd_map.end() )
+      return match->second;
+    return {};
   }
 
   dsd_node* get_father( rule& rule, dsd_node& node )
@@ -961,7 +1065,7 @@ private:
     depth_branches.push_back( depths );
 
     /* left move */
-    if ( can_left && left_node->type == start_node.type && start_node.fanin[0].inv == 0 && check_depths( rule, start_node, depth_branches, 1 ) )
+    if ( can_left && left_node->type == start_node.type && start_node.fanin[0].inv == 0 && ( !not_simmetry || check_depths( rule, start_node, depth_branches, 1 ) ) )
     {
       auto r = &left_rule[start_node.index];
 
@@ -972,7 +1076,7 @@ private:
       depth_branches.push_back( { get_depth( left_rule, left_rule[left_rule[left_node->index].fanin[0].index] ), get_depth( left_rule, left_rule[left_rule[left_node->index].fanin[1].index] ) } );
     }
     /* right move */
-    if ( can_right && right_node->type == start_node.type && start_node.fanin[1].inv == 0 && check_depths( rule, start_node, depth_branches, 0 ) )
+    if ( can_right && right_node->type == start_node.type && start_node.fanin[1].inv == 0 && ( !not_simmetry || check_depths( rule, start_node, depth_branches, 0 ) ) )
     {
       auto r = &right_rule[start_node.index];
 
@@ -981,6 +1085,13 @@ private:
       new_rules.push_back( right_rule );
       new_right = true;
       depth_branches.push_back( { get_depth( right_rule, right_rule[right_rule[right_node->index].fanin[0].index] ), get_depth( right_rule, right_rule[right_rule[right_node->index].fanin[1].index] ) } );
+    }
+    if ( permutation && left_node->type == node_type::pi_ && right_node->type == node_type::pi_ )
+    {
+      auto r = &right_rule[start_node.index];
+      r->fanin[0].index = right_node->index;
+      r->fanin[1].index = left_node->index;
+      new_rules.push_back( right_rule );
     }
 
     /* initial rule, start_node left children */
@@ -996,6 +1107,112 @@ private:
     if ( new_right )
     {
       create_rules_from_dsd( new_rules, right_rule, right_rule[start_node.index], depth_branches, false, true );
+    }
+  }
+
+  void permutations( std::vector<std::vector<uint32_t>>& res, std::vector<uint32_t> nums, uint32_t l, uint32_t h )
+  {
+    // Base case
+    // Add the vector to result and return
+    if ( l == h )
+    {
+      res.push_back( nums );
+      return;
+    }
+
+    // Permutations made
+    for ( uint32_t i = l; i <= h; i++ )
+    {
+
+      // Swapping
+      std::swap( nums[l], nums[i] );
+
+      // Calling permutations for
+      // next greater value of l
+      permutations( res, nums, l + 1, h );
+
+      // Backtracking
+      std::swap( nums[l], nums[i] );
+    }
+  }
+
+  // Function to get the permutations
+  std::vector<std::vector<uint32_t>> permute( std::vector<uint32_t>& nums )
+  {
+    // Declaring result variable
+    std::vector<std::vector<uint32_t>> res;
+    uint32_t x = nums.size() - 1;
+
+    // Calling permutations for the first
+    // time by passing l
+    // as 0 and h = nums.size()-1
+    permutations( res, nums, 0, x );
+    return res;
+  }
+
+  void find_batch( rule rule, dsd_node start, std::vector<uint32_t>& visited, std::vector<uint32_t>& variables )
+  {
+    visited.push_back( start.index );
+    if ( rule[start.fanin[0].index].type == node_type::pi_ )
+    {
+      variables.push_back( start.fanin[0].index );
+    }
+    if ( rule[start.fanin[1].index].type == node_type::pi_ )
+    {
+      variables.push_back( start.fanin[1].index );
+    }
+    if ( start.fanin[0].inv == 0 && rule[start.fanin[0].index].type != node_type::pi_ && std::find( visited.begin(), visited.end(), start.fanin[0].index ) == visited.end() )
+    {
+      find_batch( rule, rule[start.fanin[0].index], visited, variables );
+    }
+    if ( start.fanin[1].inv == 0 && rule[start.fanin[1].index].type != node_type::pi_ && std::find( visited.begin(), visited.end(), start.fanin[1].index ) == visited.end() )
+    {
+      find_batch( rule, rule[start.fanin[1].index], visited, variables );
+    }
+    return;
+  }
+
+  uint32_t find_start_index( rule r, uint32_t start_index, std::vector<uint32_t> visited )
+  {
+    auto start_node = r[start_index];
+    if ( std::find( visited.begin(), visited.end(), start_index ) == visited.end() )
+      return start_index;
+    if ( r[start_node.fanin[0].index].type != node_type::pi_ && r[start_node.fanin[0].index].type != node_type::zero_ )
+    {
+      uint32_t res = find_start_index( r, r[start_index].fanin[0].index, visited );
+      if ( res != std::numeric_limits<uint32_t>::max() )
+        return res;
+    }
+    if ( r[start_node.fanin[1].index].type != node_type::pi_ && r[start_node.fanin[1].index].type != node_type::zero_ )
+    {
+      uint32_t res = find_start_index( r, r[start_index].fanin[1].index, visited );
+      if ( res != std::numeric_limits<uint32_t>::max() )
+        return res;
+    }
+    return std::numeric_limits<uint32_t>::max();
+  }
+
+  void apply_perm( std::vector<rule>& perm_rules, rule r, std::vector<std::vector<uint32_t>> perms, std::vector<uint32_t> variables )
+  {
+    for ( auto perm : perms )
+    {
+      std::vector<dsd_node> new_rule( r );
+      for ( int i = 0; i < perm.size(); i++ )
+      {
+        dsd_node* father_new = get_father( new_rule, new_rule[variables[i]] );
+        dsd_node* father = get_father( r, r[variables[i]] );
+        if ( father->fanin[0].index == variables[i] )
+        {
+          father_new->fanin[0].index = perm[i];
+          std::cout << "father left " << father_new->fanin[0].index << "\n";
+        }
+        else
+        {
+          father_new->fanin[1].index = perm[i];
+          std::cout << "father right " << father_new->fanin[1].index << "\n";
+        }
+      }
+      perm_rules.push_back( new_rule );
     }
   }
 
@@ -1313,14 +1530,113 @@ private:
 
     return res;
   }
-  std::vector<gate> const _gates;    /* collection of gates */
-  super_lib const& _supergates_spec; /* collection of supergates declarations */
-  super_utils<NInputs> _super;       /* supergates generation */
-  bool gate_disjoint = true;         /* flag for gate support*/
-  lib_t _super_lib;                  /* library of enumerated gates */
-  lib_rule _dsd_map;                 /*hash map for dsd decomposition of gates*/
-  lib_table _and_table;              /*and table*/
-  map_label_gate _label_to_gate;     /*map label to gate*/
+
+  /*! \brief Get depth of rule starting from a specific dsd_node.
+   *
+   *  \param rule rule
+   *  \param n dsd_node to start from
+   * Returns depth of rule starting from n.
+   */
+  uint32_t get_depth( rule rule, dsd_node n )
+  {
+    if ( n.type == node_type::pi_ || n.type == node_type::zero_ )
+    {
+      return 0;
+    }
+    uint32_t max_depth;
+    uint32_t left_depth = get_depth( rule, rule[n.fanin[0].index] );
+    uint32_t right_depth = get_depth( rule, rule[n.fanin[1].index] );
+    max_depth = ( left_depth > right_depth ) ? left_depth : right_depth;
+    return max_depth + 1;
+  }
+
+#pragma region Report
+  std::string to_string( node_type t )
+  {
+    if ( t == node_type::and_ )
+      return "*";
+    if ( t == node_type::or_ )
+      return "+";
+    if ( t == node_type::mux_ )
+      return "+";
+    if ( t == node_type::xor_ )
+      return "xor";
+    if ( t == node_type::pi_ )
+      return "pi";
+    if ( t == node_type::none )
+      return "none";
+    if ( t == node_type::zero_ )
+      return "zero";
+  }
+
+  void print_dsd_node( dsd_node& n )
+  {
+    std::cout << n.index << " " << to_string( n.type ) << " ";
+    for ( auto elem : n.fanin )
+      std::cout << "{" << elem.index << ", " << elem.inv << "}";
+    std::cout << "\n";
+  }
+
+  void print_rule( rule& r )
+  {
+    for ( auto elem : r )
+      print_dsd_node( elem );
+  }
+
+  /*! \brief Print expression of a rule.
+   *
+   *  \param rule rule.
+   *  \param n dsd_node to start from.
+   */
+  void print_rule( rule rule, dsd_node n )
+  {
+    if ( n.type == node_type::pi_ )
+    {
+      std::cout << char( 'a' + n.index );
+      return;
+    }
+    if ( n.type == node_type::zero_ )
+    {
+      std::cout << "0";
+      return;
+    }
+    else
+    {
+      std::cout << "(";
+      if ( n.fanin[0].inv )
+      {
+        std::cout << "!";
+      }
+      if ( n.type == node_type::mux_ )
+      {
+        std::cout << "!" << char( 'a' + n.fanin[2].index ) << " * ";
+      }
+      print_rule( rule, rule[n.fanin[0].index] );
+      std::cout << " " << to_string( n.type ) << " ";
+      if ( n.type == node_type::mux_ )
+      {
+        std::cout << char( 'a' + n.fanin[2].index ) << " * ";
+      }
+      if ( n.fanin[1].inv )
+      {
+        std::cout << "!";
+      }
+      print_rule( rule, rule[n.fanin[1].index] );
+      std::cout << ")";
+    }
+  }
+#pragma endregion
+
+private:
+  bool gate_disjoint{ false }; /* flag for gate support*/
+  bool not_simmetry{ true };   /* flag for simmetry support*/
+  bool permutation{ false };   /* flag for input permutations support */
+
+  std::vector<gate> const& _gates; /* collection of gates */
+  composed_list_t _supergates;     /* list of composed_gates */
+  lib_rule _dsd_map;               /* hash map for DSD decomposition of gates */
+  lib_table _and_table;            /* AND table */
+  map_label_gate _label_to_gate;   /* map label to gate */
 };
 
 } // namespace mockturtle

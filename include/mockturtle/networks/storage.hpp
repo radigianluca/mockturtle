@@ -27,7 +27,6 @@
   \file storage.hpp
   \brief Configurable storage container
 
-  \author Alessandro Tempia Calvino
   \author Andrea Costamagna
   \author Bruno Schmitt
   \author Heinz Riener
@@ -58,7 +57,6 @@ private:
 public:
   node_pointer() = default;
   node_pointer( uint64_t index, uint64_t weight ) : weight( weight ), index( index ) {}
-  node_pointer( uint64_t data ) : data( data ) {}
 
   union
   {
@@ -73,11 +71,6 @@ public:
   bool operator==( node_pointer<PointerFieldSize> const& other ) const
   {
     return data == other.data;
-  }
-
-  bool operator!=( node_pointer<PointerFieldSize> const& other ) const
-  {
-    return data != other.data;
   }
 };
 
@@ -140,6 +133,20 @@ struct mixed_fanin_node
   std::array<cauint64_t, Size> data;
 
   bool operator==( mixed_fanin_node<Size, PointerFieldSize> const& other ) const
+  {
+    return children == other.children;
+  }
+};
+
+template<int PointerFieldSize = 0>
+struct block_fanin_node
+{
+  using pointer_type = node_pointer<PointerFieldSize>;
+
+  std::vector<pointer_type> children;
+  std::vector<cauint64_t> data;
+
+  bool operator==( block_fanin_node<PointerFieldSize> const& other ) const
   {
     return children == other.children;
   }

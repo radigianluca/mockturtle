@@ -282,9 +282,4 @@ struct is_complete_truth_table<kitty::static_truth_table<NumVars>> : std::true_t
 {
 };
 
-template<uint32_t NumVars>
-struct is_completely_specified_truth_table<kitty::static_truth_table<NumVars>> : std::true_type
-{
-};
-
 } // namespace kitty

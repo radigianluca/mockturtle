@@ -37,26 +37,36 @@
 #pragma once
 
 #include "../../utils/index_list.hpp"
-#include "../../utils/null_utils.hpp"
+#include "../experimental/boolean_optimization.hpp"
 #include <kitty/kitty.hpp>
 #include <optional>
 #include <vector>
 
-namespace mockturtle
+namespace mockturtle::experimental
 {
+
+struct mig_enumerative_resyn_stats
+{
+
+  void report() const
+  {
+  }
+}; /* mig_enumerative_resyn_stats */
 
 template<typename TT>
 struct mig_enumerative_resyn
 {
 public:
-  using stats = null_stats;
+  using stats = mig_enumerative_resyn_stats;
+  using params = null_params;
   using index_list_t = mig_index_list;
   using truth_table_t = TT;
 
 public:
-  explicit mig_enumerative_resyn( stats& st ) noexcept
+  explicit mig_enumerative_resyn( stats& st, params const& ps = {} ) noexcept
       : st( st )
   {
+    (void)ps;
   }
 
   template<class iterator_type, class truth_table_storage_type>
@@ -281,4 +291,4 @@ private:
   stats& st;
 }; /* mig_enumerative_resyn */
 
-} // namespace mockturtle
+} // namespace mockturtle::experimental

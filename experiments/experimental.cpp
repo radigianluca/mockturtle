@@ -52,7 +52,7 @@ int main()
     (void)result;
 
     window_resub_params ps;
-    window_resub_stats_aig_enum st;
+    window_resub_stats st;
     ps.verbose = true;
     ps.wps.max_inserts = 1;
 

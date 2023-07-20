@@ -650,7 +650,6 @@ namespace percy
                 nr_in = c.nr_in;
                 fanin = c.fanin;
                 op_tt_size = c.op_tt_size;
-                compiled_functions = c.compiled_functions;
                 steps = c.steps;
                 operators = c.operators;
                 outputs = c.outputs;

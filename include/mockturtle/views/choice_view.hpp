@@ -1,5 +1,5 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2022  EPFL
+ * Copyright (C) 2018-2021  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -33,9 +33,10 @@
 #pragma once
 
 #include <cassert>
-#include <optional>
-#include <utility>
+#include <type_traits>
 #include <vector>
+#include <utility>
+#include <optional>
 
 #include "../networks/detail/foreach.hpp"
 #include "../networks/events.hpp"
@@ -46,8 +47,8 @@ namespace mockturtle
 
 struct choice_view_params
 {
-  bool add_choices_on_substitute{ true };
-  bool update_on_add{ true };
+  bool add_choices_on_substitute{true};
+  bool update_on_add{true};
 };
 
 /*! \brief Implements choices in network
@@ -64,7 +65,7 @@ struct choice_view_params
  * The `_choice_phase` vector is used to save the polarity of each node in the
  * class with respect to the representative. The representative uses its field
  * to point to the head of the list.
- *
+ * 
  * This view is not compatible with `fanout_view`.
  *
  * **Required network functions:**
@@ -99,7 +100,8 @@ public:
 
 public:
   choice_view( choice_view_params const& ps = {} )
-      : Ntk(), _ps( ps )
+    : Ntk()
+    , _ps( ps )
   {
     static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
     static_assert( has_size_v<Ntk>, "Ntk does not implement the size method" );
@@ -120,7 +122,8 @@ public:
   }
 
   choice_view( Ntk const& ntk, choice_view_params const& ps = {} )
-      : Ntk( ntk ), _ps( ps )
+    : Ntk( ntk )
+    , _ps( ps )
   {
     static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
     static_assert( has_size_v<Ntk>, "Ntk does not implement the size method" );
@@ -143,8 +146,7 @@ public:
   choice_view<Ntk, false>& operator=( choice_view<Ntk, false> const& choice_ntk )
   {
     Ntk::operator=( choice_ntk );
-    if ( this != &choice_ntk )
-    {
+    if ( this != &choice_ntk ) {
       this->_choice_repr = choice_ntk._choice_repr;
       this->_choice_phase = choice_ntk._choice_phase;
       this->_ps = choice_ntk._ps;
@@ -177,8 +179,7 @@ public:
     auto const id1 = Ntk::node_to_index( n1 );
     auto const id2 = Ntk::node_to_index( n2 );
 
-    if ( id1 == id2 )
-    {
+    if ( id1 == id2 ) {
       /* same node */
       return;
     }
@@ -198,14 +199,14 @@ public:
     /* set the representative as the node with lowest index */
     if ( idrep1 > idrep2 )
     {
-      std::swap( rep1, rep2 );
-      std::swap( idrep1, idrep2 );
+      std::swap(rep1, rep2);
+      std::swap(idrep1, idrep2);
     }
 
     /* merge the eq lists */
     bool inv = false;
     if ( ( ( _choice_repr->at( id1 ) != n1 && Ntk::is_complemented( _choice_phase->at( id1 ) ) ) != Ntk::is_complemented( s2 ) ) !=
-         ( _choice_repr->at( id2 ) != n2 && Ntk::is_complemented( _choice_phase->at( id2 ) ) ) )
+            ( _choice_repr->at( id2 ) != n2 && Ntk::is_complemented( _choice_phase->at( id2 ) ) ) )
     {
       /* before merging, complement nodes accordingly to the new representative phase, if needed */
       invert_phases_in_class( rep2 );
@@ -225,8 +226,7 @@ public:
     auto repr = get_choice_representative( nsig );
     bool c = false;
 
-    if ( repr != nsig )
-    {
+    if ( repr != nsig ) {
       c = Ntk::is_complemented( _choice_phase->at( Ntk::node_to_index( nsig ) ) );
     }
     _choice_repr->at( Ntk::node_to_index( n ) ) = repr;
@@ -262,7 +262,7 @@ public:
     auto tail = Ntk::node_to_index( Ntk::get_node( _choice_phase->at( Ntk::node_to_index( repr ) ) ) );
 
     /* if n is a representative, recompute the representative of the new class */
-    if ( repr == Ntk::node_to_index( n ) && tail != Ntk::node_to_index( n ) )
+    if ( repr ==  Ntk::node_to_index( n ) && tail != Ntk::node_to_index( n ) )
     {
       auto new_repr = tail;
       node pred = tail;
@@ -301,8 +301,7 @@ public:
     }
     else
     {
-      while ( Ntk::node_to_index( _choice_repr->at( tail ) ) != Ntk::node_to_index( n ) )
-      {
+      while ( Ntk::node_to_index( _choice_repr->at( tail ) ) != Ntk::node_to_index( n ) ) {
         tail = Ntk::node_to_index( _choice_repr->at( tail ) );
       }
       _choice_repr->at( tail ) = Ntk::index_to_node( next );
@@ -314,8 +313,7 @@ public:
 
   void clear_choices()
   {
-    for ( auto i = 0u; i < Ntk::size(); i++ )
-    {
+    for ( auto i = 0u; i < Ntk::size(); i++ ) {
       _choice_repr->at( i ) = Ntk::index_to_node( i );
       _choice_phase->at( i ) = Ntk::make_signal( Ntk::index_to_node( i ) );
     }
@@ -339,8 +337,7 @@ public:
     assert( Ntk::node_to_index( n ) < Ntk::size() );
 
     auto rep = _choice_repr->at( Ntk::node_to_index( n ) );
-    while ( Ntk::node_to_index( rep ) != Ntk::node_to_index( _choice_repr->at( Ntk::node_to_index( rep ) ) ) )
-    {
+    while ( Ntk::node_to_index( rep ) != Ntk::node_to_index( _choice_repr->at( Ntk::node_to_index( rep ) ) ) ) {
       rep = _choice_repr->at( Ntk::node_to_index( rep ) );
     }
     return rep;
@@ -356,8 +353,7 @@ public:
   {
     auto repr = Ntk::make_signal( get_choice_representative( n ) );
 
-    if ( Ntk::get_node( repr ) == n )
-    {
+    if ( Ntk::get_node( repr ) == n ) {
       return repr;
     }
 
@@ -369,8 +365,7 @@ public:
     auto n = Ntk::get_node( sig );
     auto repr = get_choice_representative( n );
 
-    if ( repr == n )
-    {
+    if ( repr == n ) {
       return sig;
     }
 
@@ -383,14 +378,12 @@ public:
     assert( Ntk::node_to_index( n ) < Ntk::size() );
     uint32_t size = 1u;
     auto p = n;
-    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( _choice_repr->at( Ntk::node_to_index( p ) ) ) )
-    {
+    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( _choice_repr->at( Ntk::node_to_index( p ) ) ) ) {
       p = _choice_repr->at( Ntk::node_to_index( p ) );
       size++;
     }
     p = Ntk::get_node( _choice_phase->at( Ntk::node_to_index( p ) ) );
-    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( n ) )
-    {
+    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( n ) ) {
       size++;
       p = _choice_repr->at( Ntk::node_to_index( p ) );
     }
@@ -400,25 +393,44 @@ public:
   template<typename Fn>
   void foreach_choice( node const& n, Fn&& fn ) const
   {
-    auto p = n;
-    if ( !fn( p ) )
+    constexpr auto is_bool_f = std::is_invocable_r_v<bool, Fn, node>;
+    constexpr auto is_void_f = std::is_invocable_r_v<void, Fn, node>;
+
+    static_assert( is_bool_f || is_void_f );
+
+    node p = n;
+    if constexpr ( is_bool_f )
     {
-      return;
-    }
-    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( _choice_repr->at( Ntk::node_to_index( p ) ) ) )
-    {
-      p = _choice_repr->at( Ntk::node_to_index( p ) );
       if ( !fn( p ) )
-      {
         return;
+    }
+    else
+    {
+      fn( p );
+    }
+
+    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( _choice_repr->at( Ntk::node_to_index( p ) ) ) ) {
+      p = _choice_repr->at( Ntk::node_to_index( p ) );
+      if constexpr ( is_bool_f )
+      {
+        if ( !fn( p ) )
+          return;
+      }
+      else
+      {
+        fn( p );
       }
     }
     p = Ntk::get_node( _choice_phase->at( Ntk::node_to_index( p ) ) );
-    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( n ) )
-    {
-      if ( !fn( p ) )
+    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( n ) ) {
+      if constexpr ( is_bool_f )
       {
-        return;
+        if ( !fn( p ) )
+          return;
+      }
+      else
+      {
+        fn( p );
       }
       p = _choice_repr->at( Ntk::node_to_index( p ) );
     }
@@ -428,7 +440,7 @@ public:
   void substitute_node( node const& old_node, signal const& new_signal )
   {
     std::stack<std::pair<node, signal>> to_substitute;
-    to_substitute.push( { old_node, new_signal } );
+    to_substitute.push( {old_node, new_signal} );
 
     while ( !to_substitute.empty() )
     {
@@ -439,7 +451,7 @@ public:
       {
         add_choice( _old, _new );
       }
-      // TODO: add replace choice mode
+      //TODO: add replace choice mode
 
       for ( auto idx = 1u; idx < Ntk::_storage->nodes.size(); ++idx )
       {
@@ -516,15 +528,18 @@ public:
     return Ntk::_storage->nodes[n].data[0].h1 & UINT32_C( 0x3FFFFFFF );
   }
 
+
   uint32_t incr_fanout_size( node const& n ) const
   {
     return Ntk::_storage->nodes[n].data[0].h1++ & UINT32_C( 0x3FFFFFFF );
   }
 
+
   uint32_t decr_fanout_size( node const& n ) const
   {
     return --Ntk::_storage->nodes[n].data[0].h1 & UINT32_C( 0x3FFFFFFF );
   }
+
 
   inline bool is_choice( node const& n ) const
   {
@@ -546,9 +561,8 @@ private:
   {
     _choice_repr = std::make_shared<std::vector<node>>( Ntk::size() );
     _choice_phase = std::make_shared<std::vector<signal>>( Ntk::size() );
-    // Ntk::foreach_node( [&]( auto n ) {
-    for ( auto i = 0u; i < Ntk::size(); i++ )
-    {
+    //Ntk::foreach_node( [&]( auto n ) {
+    for ( auto i = 0u; i < Ntk::size(); i++ ) {
       _choice_repr->at( i ) = Ntk::index_to_node( i );
       _choice_phase->at( i ) = Ntk::make_signal( Ntk::index_to_node( i ) );
     }
@@ -561,8 +575,7 @@ private:
 
     auto p = Ntk::get_node( _choice_phase->at( rep ) );
 
-    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( _choice_repr->at( Ntk::node_to_index( p ) ) ) )
-    {
+    while ( Ntk::node_to_index( p ) != Ntk::node_to_index( _choice_repr->at( Ntk::node_to_index( p ) ) ) ) {
       _choice_phase->at( p ) = !_choice_phase->at( p );
       p = _choice_repr->at( Ntk::node_to_index( p ) );
     }

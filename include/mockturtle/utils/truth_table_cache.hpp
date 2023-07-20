@@ -27,7 +27,6 @@
   \file truth_table_cache.hpp
   \brief Truth table cache
 
-  \author Alessandro Tempia Calvino
   \author Heinz Riener
   \author Mathias Soeken
 */
@@ -104,18 +103,12 @@ public:
 
   /*! \brief Returns truth table for a given literal.
    *
-   * The function requires that `lit` is smaller than `size()`.
+   * The funtion requires that `lit` is smaller than `size()`.
    */
   TT operator[]( uint32_t lit ) const;
 
   /*! \brief Returns number of normalized truth tables in the cache. */
   auto size() const { return _data.size(); }
-
-  /*! \brief Resizes the cache.
-   *
-   * Reserve additional space for cache and data.
-   */
-  void resize( uint32_t capacity );
 
 private:
   phmap::flat_hash_map<TT, uint32_t, kitty::hash<TT>> _indexes;
@@ -160,13 +153,6 @@ TT truth_table_cache<TT>::operator[]( uint32_t index ) const
 {
   auto& entry = _data[index >> 1];
   return ( index & 1 ) ? ~entry : entry;
-}
-
-template<typename TT>
-void truth_table_cache<TT>::resize( uint32_t capacity )
-{
-  _indexes.reserve( capacity );
-  _data.reserve( capacity );
 }
 
 } /* namespace mockturtle */

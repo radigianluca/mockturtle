@@ -125,27 +125,30 @@ struct sim_resub_stats
 
 /*! \brief Simulation-based resubstitution engine.
  *
- * This engine simulates the entire network using partial truth tables and calls a
- * resynthesis engine (template parameter `ResynEngine`) to find potential resubstitutions.
- * If a resubstitution candidate is found, it then formally verifies it with SAT solving.
- * If the validation fails, a counter-example will be added to the simulation patterns,
- * and resynthesis will be invoked again with updated truth tables, looping until it returns
+ * This engine simulates in the whole network and uses partial truth tables
+ * to find potential resubstitutions. It then formally verifies the resubstitution
+ * candidates given by the resubstitution functor. If the validation fails,
+ * a counter-example will be added to the simulation patterns, and the functor
+ * will be invoked again with updated truth tables, looping until it returns
  * `std::nullopt`. This engine only requires the divisor collector to prepare `divs`.
  *
  * Please refer to the following paper for further details.
  *
- * [1] A Simulation-Guided Paradigm for Logic Synthesis and Verification. TCAD, 2022.
+ * [1] A Simulation-Guided Paradigm for Logic Synthesis and Verification. TCAD, 2021.
  *
- * Required interface of `ResynEngine`:
+ * Interfaces of the resubstitution functor:
+ * - Constructor: `resub_fn( Ntk const& ntk, resubstitution_params const& ps, ResubFnSt& st,`
+ * `unordered_node_map<TT, Ntk> const& tts, node const& root, std::vector<node> const& divs )`
  * - A public `operator()`: `std::optional<index_list_t> operator()`
- * `( TT const& target, TT const& care, iterator_type begin, iterator_type end,
- * truth_table_storage_type const& tts, uint32_t max_size )`
+ * `( TT const& care, MffcRes potential_gain, uint32_t& last_gain )`
  *
- * All classes implemented in `algorithms/resyn_engines/` are compatible.
+ * Compatible resubstitution functors implemented:
+ * - `abc_resub_functor`: interfacing functor with `abcresub`, ported from ABC (deprecated).
+ * - `resyn_functor`: interfacing functor with various resynthesis engines defined in `resyn_engines`.
  *
- * \tparam validator_t Specialization of `circuit_validator`.
- * \tparam ResynEngine A resynthesis solver to compute the resubstitution candidate.
- * \tparam MffcRes Typename of `potential_gain`.
+ * \param validator_t Specialization of `circuit_validator`.
+ * \param ResubFn Resubstitution functor to compute the resubstitution.
+ * \param MffcRes Typename of `potential_gain` needed by the resubstitution functor.
  */
 template<class Ntk, typename validator_t = circuit_validator<Ntk, bill::solvers::bsat2, false, true, false>, class ResynEngine = xag_resyn_decompose<kitty::partial_truth_table, xag_resyn_static_params_for_sim_resub<Ntk>>, typename MffcRes = uint32_t>
 class simulation_based_resub_engine
@@ -160,7 +163,7 @@ public:
   using TT = kitty::partial_truth_table;
 
   explicit simulation_based_resub_engine( Ntk& ntk, resubstitution_params const& ps, stats& st )
-      : ntk( ntk ), ps( ps ), st( st ), tts( ntk ), validator( ntk, { ps.max_clauses, ps.odc_levels, ps.conflict_limit, ps.random_seed } ), engine( st.resyn_st )
+      : ntk( ntk ), ps( ps ), st( st ), tts( ntk ), validator( ntk, { ps.max_clauses, ps.odc_levels, ps.conflict_limit, ps.random_seed } )
   {
     if constexpr ( !validator_t::use_odc_ )
     {
@@ -203,33 +206,13 @@ public:
         sim = partial_simulator( ntk.num_pis(), 1024 );
         pattern_generation( ntk, sim );
       }
-
-      if constexpr ( has_EXCDC_interface_v<Ntk> )
-      {
-        sim.remove_CDC_patterns( ntk );
-      }
     } );
     st.num_pats = sim.num_bits();
-    assert( sim.num_bits() > 0 );
 
     /* first simulation: the whole circuit; from 0 bits. */
     call_with_stopwatch( st.time_sim, [&]() {
       simulate_nodes<Ntk>( ntk, tts, sim, true );
     } );
-  }
-
-  void update()
-  {
-    if constexpr ( validator_t::use_odc_ || has_EXODC_interface_v<Ntk> )
-    {
-      call_with_stopwatch( st.time_sat_restart, [&]() {
-        validator.update();
-      } );
-      tts.reset();
-      call_with_stopwatch( st.time_sim, [&]() {
-        simulate_nodes<Ntk>( ntk, tts, sim, true );
-      } );
-    }
   }
 
   std::optional<signal> run( node const& n, std::vector<node> const& divs, mffc_result_t potential_gain, uint32_t& last_gain )
@@ -248,6 +231,7 @@ public:
 
       const auto res = call_with_stopwatch( st.time_resyn, [&]() {
         ++st.num_resyn;
+        ResynEngine engine( st.resyn_st );
         return engine( tts[n], care, std::begin( divs ), std::end( divs ), tts, std::min( potential_gain - 1, ps.max_inserts ) );
       } );
 
@@ -274,6 +258,12 @@ public:
                 out_sig = s;
               } );
             } );
+            if constexpr ( validator_t::use_odc_ )
+            {
+              call_with_stopwatch( st.time_sat_restart, [&]() {
+                validator.update();
+              } );
+            }
             return out_sig;
           }
           else
@@ -330,7 +320,6 @@ private:
   partial_simulator sim;
 
   validator_t validator;
-  ResynEngine engine;
 
   /* events */
   std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;

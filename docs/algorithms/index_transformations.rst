@@ -14,4 +14,3 @@ Network transformation and mapping
    cleanup
    equivalence_classes
    buffer_insertion
-   retiming

@@ -1,13 +1,8 @@
 #include <catch.hpp>
 
-#include <mockturtle/algorithms/collapse_mapped.hpp>
-#include <mockturtle/algorithms/equivalence_checking.hpp>
 #include <mockturtle/algorithms/lut_mapper.hpp>
-#include <mockturtle/algorithms/miter.hpp>
 #include <mockturtle/generators/arithmetic.hpp>
 #include <mockturtle/networks/aig.hpp>
-#include <mockturtle/networks/klut.hpp>
-#include <mockturtle/networks/sequential.hpp>
 #include <mockturtle/traits.hpp>
 #include <mockturtle/views/mapping_view.hpp>
 
@@ -77,56 +72,6 @@ TEST_CASE( "LUT map of AIG", "[lut_mapper]" )
   CHECK( !mapped_aig.is_cell_root( aig.get_node( f2 ) ) );
   CHECK( !mapped_aig.is_cell_root( aig.get_node( f3 ) ) );
   CHECK( !mapped_aig.is_cell_root( aig.get_node( f4 ) ) );
-}
-
-TEST_CASE( "LUT map of a sequential AIG", "[lut_mapper]" )
-{
-  sequential<aig_network> aig;
-  const auto a = aig.create_pi();
-  const auto b = aig.create_pi();
-  const auto c = aig.create_pi();
-
-  const auto f1 = aig.create_nand( a, b );
-  const auto f2 = aig.create_ro(); // f2 <- f1
-  const auto f3 = aig.create_xor( f2, c );
-
-  aig.create_po( f3 );
-  aig.create_ri( f1 ); // f3 <- f1
-
-  mapping_view mapped_aig{ aig };
-
-  CHECK( has_has_mapping_v<mapping_view<sequential<aig_network>>> );
-  CHECK( has_is_cell_root_v<mapping_view<sequential<aig_network>>> );
-  CHECK( has_clear_mapping_v<mapping_view<sequential<aig_network>>> );
-  CHECK( has_num_cells_v<mapping_view<sequential<aig_network>>> );
-  CHECK( has_add_to_mapping_v<mapping_view<sequential<aig_network>>> );
-  CHECK( has_remove_from_mapping_v<mapping_view<sequential<aig_network>>> );
-  CHECK( has_foreach_cell_fanin_v<mapping_view<sequential<aig_network>>> );
-
-  CHECK( !mapped_aig.has_mapping() );
-
-  lut_map( mapped_aig );
-
-  CHECK( mapped_aig.has_mapping() );
-  CHECK( mapped_aig.num_cells() == 2 );
-
-  CHECK( !mapped_aig.is_cell_root( aig.get_node( a ) ) );
-  CHECK( !mapped_aig.is_cell_root( aig.get_node( b ) ) );
-  CHECK( !mapped_aig.is_cell_root( aig.get_node( c ) ) );
-  CHECK( mapped_aig.is_cell_root( aig.get_node( f1 ) ) );
-  CHECK( !mapped_aig.is_cell_root( aig.get_node( f2 ) ) );
-  CHECK( mapped_aig.is_cell_root( aig.get_node( f3 ) ) );
-
-  mapped_aig.clear_mapping();
-
-  CHECK( !mapped_aig.has_mapping() );
-  CHECK( mapped_aig.num_cells() == 0 );
-
-  CHECK( !mapped_aig.is_cell_root( aig.get_node( a ) ) );
-  CHECK( !mapped_aig.is_cell_root( aig.get_node( b ) ) );
-  CHECK( !mapped_aig.is_cell_root( aig.get_node( f1 ) ) );
-  CHECK( !mapped_aig.is_cell_root( aig.get_node( f2 ) ) );
-  CHECK( !mapped_aig.is_cell_root( aig.get_node( f3 ) ) );
 }
 
 TEST_CASE( "LUT map of 2-LUT network", "[lut_mapper]" )
@@ -210,33 +155,6 @@ TEST_CASE( "LUT map of 64-LUT network", "[lut_mapper]" )
 
   mapping_view mapped_aig{ aig };
   lut_map( mapped_aig );
-
-  CHECK( mapped_aig.num_cells() == 114 );
-}
-
-TEST_CASE( "LUT map of 64-LUT network delay relaxed", "[lut_mapper]" )
-{
-  aig_network aig;
-
-  std::vector<aig_network::signal> a( 64 ), b( 64 );
-  std::generate( a.begin(), a.end(), [&aig]() { return aig.create_pi(); } );
-  std::generate( b.begin(), b.end(), [&aig]() { return aig.create_pi(); } );
-  auto carry = aig.get_constant( false );
-
-  carry_ripple_adder_inplace( aig, a, b, carry );
-
-  std::for_each( a.begin(), a.end(), [&]( auto f ) { aig.create_po( f ); } );
-  aig.create_po( carry );
-
-  mapping_view<aig_network, false> mapped_aig{ aig };
-
-  lut_map_params ps;
-  ps.area_oriented_mapping = false;
-  ps.relax_required = 1000;
-  ps.recompute_cuts = true;
-  ps.remove_dominated_cuts = false;
-  ps.edge_optimization = false;
-  lut_map<decltype( mapped_aig ), false>( mapped_aig, ps );
 
   CHECK( mapped_aig.num_cells() == 114 );
 }
@@ -345,28 +263,4 @@ TEST_CASE( "LUT map of 64-LUT network with cost function", "[lut_mapper]" )
   lut_map<decltype( mapped_aig ), true, lut_custom_cost>( mapped_aig, ps );
 
   CHECK( mapped_aig.num_cells() == 128 );
-}
-
-TEST_CASE( "LUT map remapping LUT network", "[lut_mapper]" )
-{
-  /* Issue #592 */
-  klut_network ntk;
-
-  auto const n2 = ntk.create_pi();
-  auto const n3 = ntk.create_pi();
-  auto const n4 = ntk.create_maj( n2, ntk.get_constant( false ), ntk.get_constant( true ) );
-  auto const n5 = ntk.create_xor( n3, n4 );
-  ntk.create_po( n5 );
-
-  mapping_view<klut_network, true> mapped_ntk{ ntk };
-
-  lut_map_params ps;
-  ps.cut_enumeration_ps.cut_size = 8;
-  lut_map<decltype( mapped_ntk ), true>( mapped_ntk, ps );
-
-  auto const res = *collapse_mapped_network<klut_network>( mapped_ntk );
-  auto const miter_ntk = *miter<klut_network>( ntk, res );
-
-  CHECK( mapped_ntk.num_cells() == 1 );
-  CHECK( *equivalence_checking( miter_ntk ) == true );
 }

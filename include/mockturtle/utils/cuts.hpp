@@ -117,10 +117,6 @@ public:
   template<typename Iterator>
   void set_leaves( Iterator begin, Iterator end );
 
-  template<typename Iterator>
-  void add_leaves( Iterator begin, Iterator end );
-
-
   /*! \brief Sets leaves (using container).
    *
    * Convenience function, which extracts the begin and end iterators from the
@@ -128,6 +124,14 @@ public:
    */
   template<typename Container>
   void set_leaves( Container const& c );
+
+  /*! \brief Add leaves (using iterators).
+   *
+   * \param begin Begin iterator to leaves
+   * \param end End iterator to leaves (exclusive)
+   */
+  template<typename Iterator>
+  void add_leaves( Iterator begin, Iterator end );
 
   /*! \brief Signature of the cut. */
   auto signature() const { return _signature; }
@@ -183,7 +187,6 @@ public:
    * \return True, if resulting cut is small enough
    */
   bool merge( cut const& that, cut& res, uint32_t cut_size ) const;
-
 
 private:
   std::array<uint32_t, MaxLeaves> _leaves;
@@ -260,7 +263,6 @@ void cut<MaxLeaves, T>::add_leaves( Iterator begin, Iterator end )
 {
   _cend = _end = std::copy( begin, end, _end );
   _length = static_cast<uint32_t>( std::distance( _leaves.begin(), _end ) );
-  //std::sort(_leaves.begin(), _end ); 
 
   while ( begin != end )
   {
@@ -319,7 +321,7 @@ bool cut<MaxLeaves, T>::merge( cut const& that, cut& res, uint32_t cut_size ) co
   }
 
   auto it = std::set_union( begin(), end(), that.begin(), that.end(), res.begin() );
-  if ( auto length = std::distance( res.begin(), it ); length <= cut_size )
+  if ( auto length = std::distance( res.begin(), it ); length <= cut_size ) //if there i 
   {
     res._cend = res._end = it;
     res._length = static_cast<uint32_t>( length );
@@ -331,7 +333,7 @@ bool cut<MaxLeaves, T>::merge( cut const& that, cut& res, uint32_t cut_size ) co
 
 /*! \brief A data-structure to hold a set of cuts.
  *
- * The aim of a cut set is to contain cuts and maintain two properties.  First,
+ * The aim of a cut set is to contain cuts and maintain two propeties.  First,
  * all cuts are ordered according to the `<` operator, and second, all cuts
  * are irredundant, i.e., no cut in the set dominates another cut in the set.
  *

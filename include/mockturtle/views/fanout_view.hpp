@@ -161,14 +161,7 @@ public:
 
   void substitute_node( node const& old_node, signal const& new_signal )
   {
-    if ( Ntk::get_node( new_signal ) == old_node && !Ntk::is_complemented( new_signal ) )
-      return;
-
-    if ( Ntk::is_dead( Ntk::get_node( new_signal ) ) )
-    {
-      Ntk::revive_node( Ntk::get_node( new_signal ) );
-    }
-
+    assert( !Ntk::is_dead( Ntk::get_node( new_signal ) ) );
     std::unordered_map<node, signal> old_to_new;
     std::stack<std::pair<node, signal>> to_substitute;
     to_substitute.push( { old_node, new_signal } );
@@ -179,24 +172,12 @@ public:
       to_substitute.pop();
 
       signal _new = _curr;
-      /* find the real new node */
-      if ( Ntk::is_dead( Ntk::get_node( _new ) ) )
+      while ( Ntk::is_dead( Ntk::get_node( _new ) ) )
       {
-        auto it = old_to_new.find( Ntk::get_node( _new ) );
-        while ( it != old_to_new.end() )
-        {
-          _new = Ntk::is_complemented( _new ) ? Ntk::create_not( it->second ) : it->second;
-          it = old_to_new.find( Ntk::get_node( _new ) );
-        }
+        const auto it = old_to_new.find( Ntk::get_node( _new ) );
+        assert( it != old_to_new.end() );
+        _new = Ntk::is_complemented( _new ) ? Ntk::create_not( it->second ) : it->second;
       }
-      /* revive */
-      if ( Ntk::is_dead( Ntk::get_node( _new ) ) )
-      {
-        Ntk::revive_node( Ntk::get_node( _new ) );
-      }
-
-      if ( Ntk::get_node( _new ) == _old && !Ntk::is_complemented( _new ) )
-        continue;
 
       const auto parents = _fanout[_old];
       for ( auto n : parents )
@@ -211,7 +192,7 @@ public:
       Ntk::replace_in_outputs( _old, _new );
 
       /* reset fan-in of old node */
-      if ( _old != Ntk::get_node( _new ) ) /* substitute a node using itself*/
+      if ( _old != _new.index ) /* substitute a node using itself*/
       {
         old_to_new.insert( { _old, _new } );
         Ntk::take_out_node( _old );
@@ -279,34 +260,15 @@ private:
   {
     _fanout.reset();
 
-    /* Compute fanout also for buffers in buffered networks */
-    if constexpr ( is_buffered_network_type_v<Ntk> )
-    {
-      this->foreach_node( [&]( auto const& n ) {
-        if ( this->is_pi( n ) || this->is_constant( n ) )
-          return true;
-        this->foreach_fanin( n, [&]( auto const& c ) {
-          auto& fanout = _fanout[c];
-          if ( std::find( fanout.begin(), fanout.end(), n ) == fanout.end() )
-          {
-            fanout.push_back( n );
-          }
-        } );
-        return true;
+    this->foreach_gate( [&]( auto const& n ) {
+      this->foreach_fanin( n, [&]( auto const& c ) {
+        auto& fanout = _fanout[c];
+        if ( std::find( fanout.begin(), fanout.end(), n ) == fanout.end() )
+        {
+          fanout.push_back( n );
+        }
       } );
-    }
-    else
-    {
-      this->foreach_gate( [&]( auto const& n ) {
-        this->foreach_fanin( n, [&]( auto const& c ) {
-          auto& fanout = _fanout[c];
-          if ( std::find( fanout.begin(), fanout.end(), n ) == fanout.end() )
-          {
-            fanout.push_back( n );
-          }
-        } );
-      } );
-    }
+    } );
   }
 
   node_map<std::vector<node>, Ntk> _fanout;
